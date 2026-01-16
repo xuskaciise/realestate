@@ -197,19 +197,20 @@ export default function ReportsPage() {
       const data = filteredRents.map((rent) => {
         const rentRoom = rooms.find((r) => r.id === rent.roomId);
         return {
-        "Room": rentRoom?.name || "N/A",
-        "House": rentRoom?.house.name || "N/A",
-        "Tenant": rent.tenant?.name || "N/A",
-        "Tenant Phone": rent.tenant?.phone || "N/A",
-        "Guarantor": rent.guarantorName,
-        "Guarantor Phone": rent.guarantorPhone,
-        "Monthly Rent": rent.monthlyRent,
-        "Months": rent.months,
-        "Total Rent": rent.totalRent,
-        "Start Date": dayjs(rent.startDate).format("YYYY-MM-DD"),
-        "End Date": dayjs(rent.endDate).format("YYYY-MM-DD"),
-        "Created": dayjs(rent.createdAt).format("YYYY-MM-DD"),
-      }));
+          "Room": rentRoom?.name || "N/A",
+          "House": rentRoom?.house.name || "N/A",
+          "Tenant": rent.tenant?.name || "N/A",
+          "Tenant Phone": rent.tenant?.phone || "N/A",
+          "Guarantor": rent.guarantorName,
+          "Guarantor Phone": rent.guarantorPhone,
+          "Monthly Rent": rent.monthlyRent,
+          "Months": rent.months,
+          "Total Rent": rent.totalRent,
+          "Start Date": dayjs(rent.startDate).format("YYYY-MM-DD"),
+          "End Date": dayjs(rent.endDate).format("YYYY-MM-DD"),
+          "Created": dayjs(rent.createdAt).format("YYYY-MM-DD"),
+        };
+      });
 
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
