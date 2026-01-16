@@ -110,8 +110,6 @@ type MonthlyService = {
   totalAmount: number;
 };
 
-const STORAGE_KEY = "realestate_payments";
-
 export default function PaymentsPage() {
   const { addToast } = useToast();
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -139,14 +137,6 @@ export default function PaymentsPage() {
   });
 
   const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
-
-  const saveToLocalStorage = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payments));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  }, [payments]);
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -177,38 +167,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     loadData();
-    
-    // Check for pending payment from monthly services page
-    const pendingPayment = localStorage.getItem("pending_payment");
-    if (pendingPayment) {
-      try {
-        const paymentData = JSON.parse(pendingPayment);
-        // Wait for data to load before setting form
-        setTimeout(() => {
-          if (paymentData.tenantId && tenants.length > 0) {
-            setPaymentForm((prev) => ({
-              ...prev,
-              tenantId: paymentData.tenantId,
-              monthlyServiceId: paymentData.monthlyServiceId || "",
-              paidAmount: paymentData.paidAmount || 0,
-            }));
-            setOpenPaymentModal(true);
-            // Clear the pending payment
-            localStorage.removeItem("pending_payment");
-          }
-        }, 500);
-      } catch (error) {
-        console.error("Error parsing pending payment:", error);
-        localStorage.removeItem("pending_payment");
-      }
-    }
-  }, [loadData, tenants.length]);
-
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [payments, loading, saveToLocalStorage]);
+  }, [loadData]);
 
   // Calculate balance when monthly rent or paid amount changes
   useEffect(() => {
@@ -275,34 +234,15 @@ export default function PaymentsPage() {
     }
   }, [paymentForm.monthlyServiceId, monthlyServices]);
 
-  const loadFromLocalStorage = () => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setPayments(data);
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-    }
-  };
-
   const fetchPayments = async () => {
     try {
       const response = await fetch("/api/payments");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setPayments(data);
-        } else {
-          loadFromLocalStorage();
-        }
-      } else {
-        loadFromLocalStorage();
+        setPayments(data);
       }
     } catch (error) {
       console.error("Error fetching payments:", error);
-      loadFromLocalStorage();
     }
   };
 
@@ -311,45 +251,11 @@ export default function PaymentsPage() {
       const response = await fetch("/api/tenants");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setTenants(data);
-        } else {
-          // Load sample tenants for testing if no data
-          loadSampleTenants();
-        }
-      } else {
-        // Load sample tenants for testing
-        loadSampleTenants();
+        setTenants(data);
       }
     } catch (error) {
       console.error("Error fetching tenants:", error);
-      // Load sample tenants for testing
-      loadSampleTenants();
     }
-  };
-
-  const loadSampleTenants = () => {
-    const sampleTenants: Tenant[] = [
-      {
-        id: "sample-tenant-1",
-        name: "Ahmed Hassan",
-        phone: "+252 61 1234567",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-2",
-        name: "Fatima Ali",
-        phone: "+252 61 2345678",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-3",
-        name: "Mohamed Ibrahim",
-        phone: "+252 61 3456789",
-        profile: null,
-      },
-    ];
-    setTenants(sampleTenants);
   };
 
   const fetchRents = async () => {
@@ -357,51 +263,11 @@ export default function PaymentsPage() {
       const response = await fetch("/api/rents");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setRents(data);
-        } else {
-          // Load sample rents for testing if no data
-          loadSampleRents();
-        }
-      } else {
-        // Load sample rents for testing
-        loadSampleRents();
+        setRents(data);
       }
     } catch (error) {
       console.error("Error fetching rents:", error);
-      // Load sample rents for testing
-      loadSampleRents();
     }
-  };
-
-  const loadSampleRents = () => {
-    const sampleRents: Rent[] = [
-      {
-        id: "sample-rent-1",
-        tenantId: "sample-tenant-1",
-        monthlyRent: 100,
-        startDate: dayjs().subtract(1, "month").format("YYYY-MM-DD"),
-        endDate: dayjs().add(11, "month").format("YYYY-MM-DD"),
-        roomId: "sample-room-1",
-      },
-      {
-        id: "sample-rent-2",
-        tenantId: "sample-tenant-2",
-        monthlyRent: 90,
-        startDate: dayjs().subtract(2, "month").format("YYYY-MM-DD"),
-        endDate: dayjs().add(10, "month").format("YYYY-MM-DD"),
-        roomId: "sample-room-2",
-      },
-      {
-        id: "sample-rent-3",
-        tenantId: "sample-tenant-3",
-        monthlyRent: 120,
-        startDate: dayjs().subtract(3, "month").format("YYYY-MM-DD"),
-        endDate: dayjs().add(9, "month").format("YYYY-MM-DD"),
-        roomId: "sample-room-3",
-      },
-    ];
-    setRents(sampleRents);
   };
 
   const fetchMonthlyServices = async () => {

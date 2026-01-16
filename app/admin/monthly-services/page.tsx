@@ -86,8 +86,6 @@ type Room = {
   };
 };
 
-const STORAGE_KEY = "realestate_monthly_services";
-
 export default function MonthlyServicesPage() {
   const { addToast } = useToast();
   const router = useRouter();
@@ -120,12 +118,7 @@ export default function MonthlyServicesPage() {
 
   const [serviceErrors, setServiceErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    loadData();
-    fetchRents();
-  }, []);
-
-  const fetchRents = async () => {
+  const fetchRents = useCallback(async () => {
     try {
       const response = await fetch("/api/rents");
       if (response.ok) {
@@ -135,13 +128,12 @@ export default function MonthlyServicesPage() {
     } catch (error) {
       console.error("Error fetching rents:", error);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [services, loading]);
+    loadData();
+    fetchRents();
+  }, [loadData, fetchRents]);
 
   // Auto-calculate water total
   useEffect(() => {
@@ -193,7 +185,7 @@ export default function MonthlyServicesPage() {
     calculateTotal();
   }, [calculateTotal]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       // First fetch rooms, then services (so services can use room data)
@@ -202,72 +194,21 @@ export default function MonthlyServicesPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadFromLocalStorage = () => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setServices(data);
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-    }
-  };
-
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(services));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  };
+  }, [fetchRooms]);
 
   const fetchServices = async () => {
     try {
       const response = await fetch("/api/monthly-services");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setServices(data);
-        } else {
-          loadFromLocalStorage();
-        }
-      } else {
-        loadFromLocalStorage();
+        setServices(data);
       }
     } catch (error) {
       console.error("Error fetching services:", error);
-      loadFromLocalStorage();
     }
   };
 
-  const fetchRooms = async () => {
-    try {
-      const response = await fetch("/api/rooms");
-      if (response.ok) {
-        const data = await response.json();
-        if (data.length > 0) {
-          // Filter only rooms that are currently rented
-          const rentedRooms = await filterRentedRooms(data);
-          setRooms(rentedRooms.length > 0 ? rentedRooms : data);
-        } else {
-          // Load sample rented rooms for testing
-          loadSampleRentedRooms();
-        }
-      } else {
-        // Load sample rented rooms for testing
-        loadSampleRentedRooms();
-      }
-    } catch (error) {
-      console.error("Error fetching rooms:", error);
-      // Load sample rented rooms for testing
-      loadSampleRentedRooms();
-    }
-  };
-
-  const filterRentedRooms = async (allRooms: Room[]) => {
+  const filterRentedRooms = useCallback(async (allRooms: Room[]) => {
     try {
       const response = await fetch("/api/rents");
       if (response.ok) {
@@ -290,40 +231,23 @@ export default function MonthlyServicesPage() {
       console.error("Error filtering rented rooms:", error);
       return allRooms;
     }
-  };
+  }, []);
 
-  const loadSampleRentedRooms = () => {
-    const sampleRooms: Room[] = [
-      {
-        id: "sample-room-1",
-        name: "101",
-        house: {
-          id: "sample-house-1",
-          name: "Nasrudiin",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-2",
-        name: "102",
-        house: {
-          id: "sample-house-1",
-          name: "Nasrudiin",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-3",
-        name: "201",
-        house: {
-          id: "sample-house-2",
-          name: "Muuse galaal",
-          address: "Mogadishu, Somalia",
-        },
-      },
-    ];
-    setRooms(sampleRooms);
-  };
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.length > 0) {
+          // Filter only rooms that are currently rented
+          const rentedRooms = await filterRentedRooms(data);
+          setRooms(rentedRooms.length > 0 ? rentedRooms : data);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+    }
+  }, [filterRentedRooms]);
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -558,16 +482,6 @@ export default function MonthlyServicesPage() {
       return;
     }
 
-    // Store payment data in localStorage to pre-fill the payment form
-    const paymentData = {
-      tenantId: activeRent.tenantId,
-      monthlyServiceId: service.id,
-      paidAmount: service.totalAmount,
-      month: service.month,
-    };
-
-    localStorage.setItem("pending_payment", JSON.stringify(paymentData));
-    
     // Navigate to payments page
     router.push("/admin/payments");
   };

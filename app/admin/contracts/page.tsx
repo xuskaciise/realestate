@@ -96,115 +96,16 @@ export default function ContractsPage() {
         rents = data;
       }
 
-      // If no data, use sample data
-      if (rents.length === 0) {
-        rents = getSampleRents();
-      }
-
       // Process rents to contracts with balance calculation
       const processedContracts = processContracts(rents, rooms);
       setContracts(processedContracts);
     } catch (error) {
       console.error("Error loading contracts:", error);
-      // Use sample data on error
-      const sampleRents = getSampleRents();
-      const processedContracts = processContracts(sampleRents, rooms);
-      setContracts(processedContracts);
+      setContracts([]);
     } finally {
       setLoading(false);
     }
   }, [fetchRooms, rooms]);
-
-  const getSampleRents = (): Rent[] => {
-    const today = dayjs();
-    return [
-      {
-        id: "sample-rent-1",
-        roomId: "sample-room-1",
-        tenantId: "sample-tenant-1",
-        monthlyRent: 100,
-        months: 12,
-        totalRent: 1200,
-        startDate: today.subtract(11, "month").format("YYYY-MM-DD"),
-        endDate: today.add(1, "month").format("YYYY-MM-DD"),
-        createdAt: today.subtract(11, "month").format("YYYY-MM-DD"),
-        tenant: {
-          id: "sample-tenant-1",
-          name: "Ahmed Hassan",
-          phone: "+252 61 1234567",
-          profile: null,
-        },
-      },
-      {
-        id: "sample-rent-2",
-        roomId: "sample-room-2",
-        tenantId: "sample-tenant-2",
-        monthlyRent: 90,
-        months: 6,
-        totalRent: 540,
-        startDate: today.subtract(5, "month").format("YYYY-MM-DD"),
-        endDate: today.add(1, "month").format("YYYY-MM-DD"),
-        createdAt: today.subtract(5, "month").format("YYYY-MM-DD"),
-        tenant: {
-          id: "sample-tenant-2",
-          name: "Fatima Ali",
-          phone: "+252 61 2345678",
-          profile: null,
-        },
-      },
-      {
-        id: "sample-rent-3",
-        roomId: "sample-room-3",
-        tenantId: "sample-tenant-3",
-        monthlyRent: 120,
-        months: 12,
-        totalRent: 1440,
-        startDate: today.subtract(13, "month").format("YYYY-MM-DD"),
-        endDate: today.subtract(1, "month").format("YYYY-MM-DD"), // Expired
-        createdAt: today.subtract(13, "month").format("YYYY-MM-DD"),
-        tenant: {
-          id: "sample-tenant-3",
-          name: "Mohamed Ibrahim",
-          phone: "+252 61 3456789",
-          profile: null,
-        },
-      },
-      {
-        id: "sample-rent-4",
-        roomId: "sample-room-4",
-        tenantId: "sample-tenant-4",
-        monthlyRent: 150,
-        months: 12,
-        totalRent: 1800,
-        startDate: today.subtract(12, "month").format("YYYY-MM-DD"),
-        endDate: today.format("YYYY-MM-DD"), // Expiring today
-        createdAt: today.subtract(12, "month").format("YYYY-MM-DD"),
-        tenant: {
-          id: "sample-tenant-4",
-          name: "Aisha Mohamed",
-          phone: "+252 61 4567890",
-          profile: null,
-        },
-      },
-      {
-        id: "sample-rent-5",
-        roomId: "sample-room-5",
-        tenantId: "sample-tenant-5",
-        monthlyRent: 80,
-        months: 6,
-        totalRent: 480,
-        startDate: today.subtract(2, "month").format("YYYY-MM-DD"),
-        endDate: today.add(4, "month").format("YYYY-MM-DD"), // Not expiring soon
-        createdAt: today.subtract(2, "month").format("YYYY-MM-DD"),
-        tenant: {
-          id: "sample-tenant-5",
-          name: "Omar Abdullahi",
-          phone: "+252 61 5678901",
-          profile: null,
-        },
-      },
-    ];
-  };
 
   const processContracts = (rents: Rent[], rooms: Room[]): ContractWithBalance[] => {
     const today = dayjs();

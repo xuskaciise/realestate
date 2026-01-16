@@ -87,8 +87,6 @@ type Tenant = {
   profile: string | null;
 };
 
-const STORAGE_KEY = "realestate_rents";
-
 export default function RentsPage() {
   const [rents, setRents] = useState<Rent[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -115,14 +113,6 @@ export default function RentsPage() {
 
   const [rentErrors, setRentErrors] = useState<Record<string, string>>({});
 
-  const saveToLocalStorage = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(rents));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  }, [rents]);
-
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -139,12 +129,6 @@ export default function RentsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [rents, loading, saveToLocalStorage]);
 
   // Calculate total rent when monthly rent or months change
   useEffect(() => {
@@ -173,31 +157,15 @@ export default function RentsPage() {
     }
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
-  const loadFromLocalStorage = () => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setRents(data);
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-    }
-  };
-
   const fetchRents = async () => {
     try {
       const response = await fetch("/api/rents");
       if (response.ok) {
         const data = await response.json();
         setRents(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } else {
-        loadFromLocalStorage();
       }
     } catch (error) {
       console.error("Error fetching rents:", error);
-      loadFromLocalStorage();
     }
   };
 
@@ -206,20 +174,10 @@ export default function RentsPage() {
       const response = await fetch("/api/rooms");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setRooms(data);
-        } else {
-          // Load sample rooms for testing if no data
-          loadSampleRooms();
-        }
-      } else {
-        // Load sample rooms for testing
-        loadSampleRooms();
+        setRooms(data);
       }
     } catch (error) {
       console.error("Error fetching rooms:", error);
-      // Load sample rooms for testing
-      loadSampleRooms();
     }
   };
 
@@ -228,108 +186,11 @@ export default function RentsPage() {
       const response = await fetch("/api/tenants");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setTenants(data);
-        } else {
-          // Load sample tenants for testing if no data
-          loadSampleTenants();
-        }
-      } else {
-        // Load sample tenants for testing
-        loadSampleTenants();
+        setTenants(data);
       }
     } catch (error) {
       console.error("Error fetching tenants:", error);
-      // Load sample tenants for testing
-      loadSampleTenants();
     }
-  };
-
-  const loadSampleRooms = () => {
-    const sampleRooms: Room[] = [
-      {
-        id: "sample-room-1",
-        name: "101",
-        monthlyRent: 100,
-        house: {
-          name: "Nasrudiin",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-2",
-        name: "102",
-        monthlyRent: 90,
-        house: {
-          name: "Nasrudiin",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-3",
-        name: "101",
-        monthlyRent: 50,
-        house: {
-          name: "Muuse galaal",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-4",
-        name: "201",
-        monthlyRent: 120,
-        house: {
-          name: "Nasrudiin",
-          address: "Mogadishu, Somalia",
-        },
-      },
-      {
-        id: "sample-room-5",
-        name: "202",
-        monthlyRent: 110,
-        house: {
-          name: "Muuse galaal",
-          address: "Mogadishu, Somalia",
-        },
-      },
-    ];
-    setRooms(sampleRooms);
-  };
-
-  const loadSampleTenants = () => {
-    const sampleTenants: Tenant[] = [
-      {
-        id: "sample-tenant-1",
-        name: "Ahmed Hassan",
-        phone: "+252 61 123 4567",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-2",
-        name: "Fatima Ali",
-        phone: "+252 61 234 5678",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-3",
-        name: "Mohamed Ibrahim",
-        phone: "+252 61 345 6789",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-4",
-        name: "Aisha Mohamed",
-        phone: "+252 61 456 7890",
-        profile: null,
-      },
-      {
-        id: "sample-tenant-5",
-        name: "Omar Abdullahi",
-        phone: "+252 61 567 8901",
-        profile: null,
-      },
-    ];
-    setTenants(sampleTenants);
   };
 
   const handleContractUpload = async (file: File) => {

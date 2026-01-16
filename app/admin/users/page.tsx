@@ -64,8 +64,6 @@ type User = {
   updatedAt: string;
 };
 
-const STORAGE_KEY = "realestate_users";
-
 export default function UsersPage() {
   const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -90,44 +88,17 @@ export default function UsersPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  const saveToLocalStorage = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  }, [users]);
-
-  const loadFromLocalStorage = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setUsers(data);
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-    }
-  }, []);
-
   const fetchUsers = useCallback(async () => {
     try {
       const response = await fetch("/api/users");
       if (response.ok) {
         const data = await response.json();
-        if (data.length > 0) {
-          setUsers(data);
-        } else {
-          loadFromLocalStorage();
-        }
-      } else {
-        loadFromLocalStorage();
+        setUsers(data);
       }
     } catch (error) {
       console.error("Error fetching users:", error);
-      loadFromLocalStorage();
     }
-  }, [loadFromLocalStorage]);
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -141,12 +112,6 @@ export default function UsersPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [users, loading, saveToLocalStorage]);
 
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

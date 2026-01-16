@@ -67,8 +67,6 @@ type Room = {
   updatedAt: string;
 };
 
-const STORAGE_KEY = "realestate_properties";
-
 export default function PropertiesPage() {
   const [houses, setHouses] = useState<House[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +104,6 @@ export default function PropertiesPage() {
       if (response.ok) {
         const data = await response.json();
         setHouses(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       }
     } catch (error) {
       console.error("Error fetching houses:", error);
@@ -115,42 +112,9 @@ export default function PropertiesPage() {
     }
   }, []);
 
-  const saveToLocalStorage = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(houses));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  }, [houses]);
-
-  const loadFromLocalStorage = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setHouses(data);
-      } else {
-        fetchHouses();
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-      fetchHouses();
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    fetchHouses();
   }, [fetchHouses]);
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    loadFromLocalStorage();
-  }, [loadFromLocalStorage]);
-
-  // Save to localStorage whenever houses change
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [houses, loading, saveToLocalStorage]);
 
   const handleHouseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

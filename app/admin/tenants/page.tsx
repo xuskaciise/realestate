@@ -52,8 +52,6 @@ type Tenant = {
   updatedAt: string;
 };
 
-const STORAGE_KEY = "realestate_tenants";
-
 export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,14 +71,6 @@ export default function TenantsPage() {
 
   const [tenantErrors, setTenantErrors] = useState<Record<string, string>>({});
 
-  const saveToLocalStorage = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tenants));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  }, [tenants]);
-
   const fetchTenants = useCallback(async () => {
     try {
       setLoading(true);
@@ -88,7 +78,6 @@ export default function TenantsPage() {
       if (response.ok) {
         const data = await response.json();
         setTenants(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       }
     } catch (error) {
       console.error("Error fetching tenants:", error);
@@ -97,34 +86,9 @@ export default function TenantsPage() {
     }
   }, []);
 
-  const loadFromLocalStorage = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setTenants(data);
-      } else {
-        fetchTenants();
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-      fetchTenants();
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    fetchTenants();
   }, [fetchTenants]);
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    loadFromLocalStorage();
-  }, [loadFromLocalStorage]);
-
-  // Save to localStorage whenever tenants change
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [tenants, loading, saveToLocalStorage]);
 
   const handleImageUpload = async (file: File) => {
     try {
