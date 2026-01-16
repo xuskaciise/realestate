@@ -1,0 +1,116 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model House {
+  id          String   @id @default(uuid())
+  name        String
+  address     String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  rooms       Room[]
+}
+
+model Room {
+  id          String   @id @default(uuid())
+  name        String
+  monthlyRent Float
+  houseId     String
+  house       House    @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  rents       Rent[]
+  monthlyServices MonthlyService[]
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  address   String
+  profile   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rents     Rent[]
+  payments  Payment[]
+}
+
+model Rent {
+  id              String   @id @default(uuid())
+  roomId          String
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guarantorName   String
+  guarantorPhone  String
+  monthlyRent     Float
+  months          Int
+  totalRent       Float
+  startDate       DateTime
+  endDate         DateTime
+  contract        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  monthlyRent       Float
+  paidAmount        Float
+  balance           Float
+  status            String   // Paid, Partial, Pending, Overdue
+  paymentDate       DateTime
+  monthlyServiceId  String?  // Link to MonthlyService
+  monthlyService    MonthlyService? @relation(fields: [monthlyServiceId], references: [id], onDelete: SetNull)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model MonthlyService {
+  id                String   @id @default(uuid())
+  roomId            String
+  room              Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  month             String   // Format: YYYY-MM
+  // Water Meter
+  waterPrevious     Float?
+  waterCurrent      Float?
+  waterPricePerUnit Float?
+  waterTotal        Float?
+  // Electricity Meter
+  electricityPrevious     Float?
+  electricityCurrent      Float?
+  electricityPricePerUnit Float?
+  electricityTotal        Float?
+  // Fixed Services
+  trashFee          Float?
+  maintenanceFee    Float?
+  totalAmount       Float
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  payments          Payment[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  fullname  String
+  username  String   @unique
+  password  String
+  type      String   // Admin, Manager, Staff, etc.
+  status    String   // Active, Inactive, Suspended
+  profile   String?  // Profile image path
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
