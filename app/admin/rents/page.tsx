@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
@@ -125,15 +125,36 @@ export default function RentsPage() {
 
   const [rentErrors, setRentErrors] = useState<Record<string, string>>({});
 
+  const saveToLocalStorage = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rents));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
+    }
+  }, [rents]);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchRents(),
+        fetchRooms(),
+        fetchTenants(),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   useEffect(() => {
     if (!loading) {
       saveToLocalStorage();
     }
-  }, [rents, loading]);
+  }, [rents, loading, saveToLocalStorage]);
 
   // Calculate total rent when monthly rent or months change
   useEffect(() => {
@@ -160,28 +181,7 @@ export default function RentsPage() {
         setRentForm((prev) => ({ ...prev, monthlyRent: selectedRoom.monthlyRent }));
       }
     }
-  }, [rentForm.roomId, rooms]);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      await Promise.all([
-        fetchRents(),
-        fetchRooms(),
-        fetchTenants(),
-      ]);
-      
-      // If no rooms or tenants, load sample data for testing
-      if (rooms.length === 0) {
-        loadSampleRooms();
-      }
-      if (tenants.length === 0) {
-        loadSampleTenants();
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
   const loadFromLocalStorage = () => {
     try {
@@ -192,14 +192,6 @@ export default function RentsPage() {
       }
     } catch (error) {
       console.error("Error loading from localStorage:", error);
-    }
-  };
-
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(rents));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
     }
   };
 

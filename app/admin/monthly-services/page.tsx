@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
@@ -189,18 +189,18 @@ export default function MonthlyServicesPage() {
   ]);
 
   // Calculate total amount
-  const calculateTotal = () => {
+  const calculateTotal = useCallback(() => {
     const total =
       (serviceForm.waterTotal || 0) +
       (serviceForm.electricityTotal || 0) +
       (serviceForm.trashFee || 0) +
       (serviceForm.maintenanceFee || 0);
     setServiceForm((prev) => ({ ...prev, totalAmount: total }));
-  };
+  }, [serviceForm.waterTotal, serviceForm.electricityTotal, serviceForm.trashFee, serviceForm.maintenanceFee]);
 
   useEffect(() => {
     calculateTotal();
-  }, [serviceForm.trashFee, serviceForm.maintenanceFee]);
+  }, [calculateTotal]);
 
   const loadData = async () => {
     try {

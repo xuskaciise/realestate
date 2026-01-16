@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
@@ -136,6 +136,28 @@ export default function PaymentsPage() {
 
   const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
 
+  const saveToLocalStorage = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payments));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
+    }
+  }, [payments]);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchPayments(),
+        fetchTenants(),
+        fetchRents(),
+        fetchMonthlyServices(),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     
@@ -163,13 +185,13 @@ export default function PaymentsPage() {
         localStorage.removeItem("pending_payment");
       }
     }
-  }, [tenants.length]);
+  }, [loadData, tenants.length]);
 
   useEffect(() => {
     if (!loading) {
       saveToLocalStorage();
     }
-  }, [payments, loading]);
+  }, [payments, loading, saveToLocalStorage]);
 
   // Calculate balance when monthly rent or paid amount changes
   useEffect(() => {
@@ -203,8 +225,8 @@ export default function PaymentsPage() {
       const today = dayjs();
       const activeRent = rents.find(
         (r) => r.tenantId === paymentForm.tenantId && 
-        (today.isAfter(dayjs(r.startDate)) || today.isSame(dayjs(r.startDate), 'day')) && 
-        (today.isBefore(dayjs(r.endDate)) || today.isSame(dayjs(r.endDate), 'day'))
+        (today.isAfter(dayjs(r.startDate)) || today.isSame(dayjs(r.startDate), "day")) && 
+        (today.isBefore(dayjs(r.endDate)) || today.isSame(dayjs(r.endDate), "day"))
       );
       
       // If no active rent found, try to get the most recent rent for this tenant
@@ -236,20 +258,6 @@ export default function PaymentsPage() {
     }
   }, [paymentForm.monthlyServiceId, monthlyServices]);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      await Promise.all([
-        fetchPayments(),
-        fetchTenants(),
-        fetchRents(),
-        fetchMonthlyServices(),
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadFromLocalStorage = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -259,14 +267,6 @@ export default function PaymentsPage() {
       }
     } catch (error) {
       console.error("Error loading from localStorage:", error);
-    }
-  };
-
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payments));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
     }
   };
 
@@ -1171,7 +1171,7 @@ export default function PaymentsPage() {
                     <p className="text-sm text-destructive font-medium">{paymentErrors.monthlyRent}</p>
                   )}
                   {paymentForm.tenantId && (
-                    <p className="text-xs text-muted-foreground">Auto-filled from tenant's rent</p>
+                    <p className="text-xs text-muted-foreground">Auto-filled from tenant&apos;s rent</p>
                   )}
                 </div>
 

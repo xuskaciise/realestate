@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dayjs from "dayjs";
 import { AlertTriangle, Clock, FileX, RefreshCw } from "lucide-react";
 
@@ -67,11 +67,7 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "expired" | "expiring_soon">("all");
 
-  useEffect(() => {
-    loadContracts();
-  }, []);
-
-  const loadContracts = async () => {
+  const loadContracts = useCallback(async () => {
     try {
       setLoading(true);
       // First try to fetch from API
@@ -100,7 +96,7 @@ export default function ContractsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const getSampleRents = (): Rent[] => {
     const today = dayjs();
