@@ -378,6 +378,17 @@ export default function MonthlyServicesPage() {
             ? {
                 ...s,
                 ...validated,
+                waterPrevious: validated.waterPrevious ?? null,
+                waterCurrent: validated.waterCurrent ?? null,
+                waterPricePerUnit: validated.waterPricePerUnit ?? null,
+                waterTotal: validated.waterTotal ?? null,
+                electricityPrevious: validated.electricityPrevious ?? null,
+                electricityCurrent: validated.electricityCurrent ?? null,
+                electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
+                electricityTotal: validated.electricityTotal ?? null,
+                trashFee: validated.trashFee ?? null,
+                maintenanceFee: validated.maintenanceFee ?? null,
+                notes: validated.notes ?? null,
                 updatedAt: new Date().toISOString(),
               }
             : s
@@ -429,6 +440,17 @@ export default function MonthlyServicesPage() {
         const newService: MonthlyService = {
           id: uuidv4(),
           ...validated,
+          waterPrevious: validated.waterPrevious ?? null,
+          waterCurrent: validated.waterCurrent ?? null,
+          waterPricePerUnit: validated.waterPricePerUnit ?? null,
+          waterTotal: validated.waterTotal ?? null,
+          electricityPrevious: validated.electricityPrevious ?? null,
+          electricityCurrent: validated.electricityCurrent ?? null,
+          electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
+          electricityTotal: validated.electricityTotal ?? null,
+          trashFee: validated.trashFee ?? null,
+          maintenanceFee: validated.maintenanceFee ?? null,
+          notes: validated.notes ?? null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
