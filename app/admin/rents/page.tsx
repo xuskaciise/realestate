@@ -423,7 +423,7 @@ export default function RentsPage() {
         const newRent: Rent = {
           id: uuidv4(),
           ...validated,
-          contract: validated.contract || null,
+          contract: validated.contract ?? null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

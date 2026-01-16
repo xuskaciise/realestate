@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import Image from "next/image";
@@ -90,26 +90,15 @@ export default function UsersPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [users, loading]);
-
-  const loadData = async () => {
+  const saveToLocalStorage = useCallback(() => {
     try {
-      setLoading(true);
-      await fetchUsers();
-    } finally {
-      setLoading(false);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
     }
-  };
+  }, [users]);
 
-  const loadFromLocalStorage = () => {
+  const loadFromLocalStorage = useCallback(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -119,17 +108,9 @@ export default function UsersPage() {
     } catch (error) {
       console.error("Error loading from localStorage:", error);
     }
-  };
+  }, []);
 
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  };
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const response = await fetch("/api/users");
       if (response.ok) {
@@ -146,7 +127,26 @@ export default function UsersPage() {
       console.error("Error fetching users:", error);
       loadFromLocalStorage();
     }
-  };
+  }, [loadFromLocalStorage]);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await fetchUsers();
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!loading) {
+      saveToLocalStorage();
+    }
+  }, [users, loading, saveToLocalStorage]);
 
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
@@ -73,19 +73,31 @@ export default function TenantsPage() {
 
   const [tenantErrors, setTenantErrors] = useState<Record<string, string>>({});
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    loadFromLocalStorage();
+  const saveToLocalStorage = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tenants));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
+    }
+  }, [tenants]);
+
+  const fetchTenants = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/tenants");
+      if (response.ok) {
+        const data = await response.json();
+        setTenants(data);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
+    } catch (error) {
+      console.error("Error fetching tenants:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Save to localStorage whenever tenants change
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
-    }
-  }, [tenants, loading]);
-
-  const loadFromLocalStorage = () => {
+  const loadFromLocalStorage = useCallback(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -100,31 +112,19 @@ export default function TenantsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchTenants]);
 
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tenants));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  };
+  // Load from localStorage on mount
+  useEffect(() => {
+    loadFromLocalStorage();
+  }, [loadFromLocalStorage]);
 
-  const fetchTenants = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/tenants");
-      if (response.ok) {
-        const data = await response.json();
-        setTenants(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      }
-    } catch (error) {
-      console.error("Error fetching tenants:", error);
-    } finally {
-      setLoading(false);
+  // Save to localStorage whenever tenants change
+  useEffect(() => {
+    if (!loading) {
+      saveToLocalStorage();
     }
-  };
+  }, [tenants, loading, saveToLocalStorage]);
 
   const handleImageUpload = async (file: File) => {
     try {

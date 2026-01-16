@@ -365,6 +365,7 @@ export default function PaymentsPage() {
         monthlyRent: 100,
         startDate: dayjs().subtract(1, "month").format("YYYY-MM-DD"),
         endDate: dayjs().add(11, "month").format("YYYY-MM-DD"),
+        roomId: "sample-room-1",
       },
       {
         id: "sample-rent-2",
@@ -372,6 +373,7 @@ export default function PaymentsPage() {
         monthlyRent: 90,
         startDate: dayjs().subtract(2, "month").format("YYYY-MM-DD"),
         endDate: dayjs().add(10, "month").format("YYYY-MM-DD"),
+        roomId: "sample-room-2",
       },
       {
         id: "sample-rent-3",
@@ -379,6 +381,7 @@ export default function PaymentsPage() {
         monthlyRent: 120,
         startDate: dayjs().subtract(3, "month").format("YYYY-MM-DD"),
         endDate: dayjs().add(9, "month").format("YYYY-MM-DD"),
+        roomId: "sample-room-3",
       },
     ];
     setRents(sampleRents);
@@ -446,7 +449,7 @@ export default function PaymentsPage() {
         const newPayment: Payment = {
           id: uuidv4(),
           ...validated,
-          notes: validated.notes || null,
+          notes: validated.notes ?? null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

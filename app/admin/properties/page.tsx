@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
@@ -99,19 +99,31 @@ export default function PropertiesPage() {
   const [houseErrors, setHouseErrors] = useState<Record<string, string>>({});
   const [roomErrors, setRoomErrors] = useState<Record<string, string>>({});
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    loadFromLocalStorage();
+  const fetchHouses = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/houses");
+      if (response.ok) {
+        const data = await response.json();
+        setHouses(data);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
+    } catch (error) {
+      console.error("Error fetching houses:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Save to localStorage whenever houses change
-  useEffect(() => {
-    if (!loading) {
-      saveToLocalStorage();
+  const saveToLocalStorage = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(houses));
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
     }
-  }, [houses, loading]);
+  }, [houses]);
 
-  const loadFromLocalStorage = () => {
+  const loadFromLocalStorage = useCallback(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -126,31 +138,19 @@ export default function PropertiesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchHouses]);
 
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(houses));
-    } catch (error) {
-      console.error("Error saving to localStorage:", error);
-    }
-  };
+  // Load from localStorage on mount
+  useEffect(() => {
+    loadFromLocalStorage();
+  }, [loadFromLocalStorage]);
 
-  const fetchHouses = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/houses");
-      if (response.ok) {
-        const data = await response.json();
-        setHouses(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      }
-    } catch (error) {
-      console.error("Error fetching houses:", error);
-    } finally {
-      setLoading(false);
+  // Save to localStorage whenever houses change
+  useEffect(() => {
+    if (!loading) {
+      saveToLocalStorage();
     }
-  };
+  }, [houses, loading, saveToLocalStorage]);
 
   const handleHouseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +190,7 @@ export default function PropertiesPage() {
         const newHouse: House = {
           id: uuidv4(),
           ...validated,
-          description: validated.description || null,
+          description: validated.description ?? null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           rooms: [],

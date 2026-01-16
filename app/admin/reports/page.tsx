@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dayjs from "dayjs";
 import { FileText, Download, Printer, FileSpreadsheet, Filter, X } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -97,20 +97,7 @@ export default function ReportsPage() {
   const [showRentFilters, setShowRentFilters] = useState(false);
   const [showPaymentFilters, setShowPaymentFilters] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      await Promise.all([fetchRents(), fetchPayments(), fetchTenants()]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchRents = async () => {
+  const fetchRents = useCallback(async () => {
     try {
       const response = await fetch("/api/rents");
       if (response.ok) {
@@ -120,9 +107,9 @@ export default function ReportsPage() {
     } catch (error) {
       console.error("Error fetching rents:", error);
     }
-  };
+  }, []);
 
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     try {
       const response = await fetch("/api/payments");
       if (response.ok) {
@@ -132,9 +119,9 @@ export default function ReportsPage() {
     } catch (error) {
       console.error("Error fetching payments:", error);
     }
-  };
+  }, []);
 
-  const fetchTenants = async () => {
+  const fetchTenants = useCallback(async () => {
     try {
       const response = await fetch("/api/tenants");
       if (response.ok) {
@@ -144,7 +131,20 @@ export default function ReportsPage() {
     } catch (error) {
       console.error("Error fetching tenants:", error);
     }
-  };
+  }, []);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([fetchRents(), fetchPayments(), fetchTenants()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchRents, fetchPayments, fetchTenants]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Filter rents
   const filteredRents = rents.filter((rent) => {
