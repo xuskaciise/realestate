@@ -32,14 +32,15 @@ type Rent = {
     phone: string;
     profile: string | null;
   };
-  room?: {
+};
+
+type Room = {
+  id: string;
+  name: string;
+  house: {
     id: string;
     name: string;
-    house: {
-      id: string;
-      name: string;
-      address: string;
-    };
+    address: string;
   };
 };
 
@@ -64,12 +65,28 @@ type ContractWithBalance = {
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<ContractWithBalance[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "expired" | "expiring_soon">("all");
+
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms");
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(data);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+    }
+  }, []);
 
   const loadContracts = useCallback(async () => {
     try {
       setLoading(true);
+      // Fetch rooms first
+      await fetchRooms();
+      
       // First try to fetch from API
       const response = await fetch("/api/rents");
       let rents: Rent[] = [];
@@ -85,18 +102,18 @@ export default function ContractsPage() {
       }
 
       // Process rents to contracts with balance calculation
-      const processedContracts = processContracts(rents);
+      const processedContracts = processContracts(rents, rooms);
       setContracts(processedContracts);
     } catch (error) {
       console.error("Error loading contracts:", error);
       // Use sample data on error
       const sampleRents = getSampleRents();
-      const processedContracts = processContracts(sampleRents);
+      const processedContracts = processContracts(sampleRents, rooms);
       setContracts(processedContracts);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchRooms, rooms]);
 
   const getSampleRents = (): Rent[] => {
     const today = dayjs();
@@ -117,15 +134,6 @@ export default function ContractsPage() {
           phone: "+252 61 1234567",
           profile: null,
         },
-        room: {
-          id: "sample-room-1",
-          name: "101",
-          house: {
-            id: "sample-house-1",
-            name: "Nasrudiin",
-            address: "Mogadishu, Somalia",
-          },
-        },
       },
       {
         id: "sample-rent-2",
@@ -142,15 +150,6 @@ export default function ContractsPage() {
           name: "Fatima Ali",
           phone: "+252 61 2345678",
           profile: null,
-        },
-        room: {
-          id: "sample-room-2",
-          name: "102",
-          house: {
-            id: "sample-house-1",
-            name: "Nasrudiin",
-            address: "Mogadishu, Somalia",
-          },
         },
       },
       {
@@ -169,15 +168,6 @@ export default function ContractsPage() {
           phone: "+252 61 3456789",
           profile: null,
         },
-        room: {
-          id: "sample-room-3",
-          name: "201",
-          house: {
-            id: "sample-house-2",
-            name: "Muuse galaal",
-            address: "Mogadishu, Somalia",
-          },
-        },
       },
       {
         id: "sample-rent-4",
@@ -194,15 +184,6 @@ export default function ContractsPage() {
           name: "Aisha Mohamed",
           phone: "+252 61 4567890",
           profile: null,
-        },
-        room: {
-          id: "sample-room-4",
-          name: "301",
-          house: {
-            id: "sample-house-2",
-            name: "Muuse galaal",
-            address: "Mogadishu, Somalia",
-          },
         },
       },
       {
@@ -221,20 +202,11 @@ export default function ContractsPage() {
           phone: "+252 61 5678901",
           profile: null,
         },
-        room: {
-          id: "sample-room-5",
-          name: "202",
-          house: {
-            id: "sample-house-2",
-            name: "Muuse galaal",
-            address: "Mogadishu, Somalia",
-          },
-        },
       },
     ];
   };
 
-  const processContracts = (rents: Rent[]): ContractWithBalance[] => {
+  const processContracts = (rents: Rent[], rooms: Room[]): ContractWithBalance[] => {
     const today = dayjs();
     const oneMonthFromNow = today.add(1, "month");
 
@@ -260,14 +232,17 @@ export default function ContractsPage() {
           return null;
         }
 
+        // Look up room information
+        const rentRoom = rooms.find((r) => r.id === rent.roomId);
+
         return {
           id: rent.id,
           tenantName: rent.tenant?.name || "N/A",
           tenantPhone: rent.tenant?.phone || "N/A",
           tenantProfile: rent.tenant?.profile || null,
-          roomName: rent.room?.name || "N/A",
-          houseName: rent.room?.house.name || "N/A",
-          houseAddress: rent.room?.house.address || "N/A",
+          roomName: rentRoom?.name || "N/A",
+          houseName: rentRoom?.house.name || "N/A",
+          houseAddress: rentRoom?.house.address || "N/A",
           startDate: rent.startDate,
           endDate: rent.endDate,
           monthlyRent: rent.monthlyRent,

@@ -65,6 +65,7 @@ type Payment = {
   balance: number;
   status: string;
   paymentDate: string;
+  monthlyServiceId?: string;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -92,19 +93,21 @@ type Rent = {
   roomId: string;
 };
 
+type Room = {
+  id: string;
+  name: string;
+  house: {
+    id: string;
+    name: string;
+    address: string;
+  };
+};
+
 type MonthlyService = {
   id: string;
   roomId: string;
   month: string;
   totalAmount: number;
-  room?: {
-    id: string;
-    name: string;
-    house: {
-      id: string;
-      name: string;
-    };
-  };
 };
 
 const STORAGE_KEY = "realestate_payments";
@@ -114,6 +117,7 @@ export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [rents, setRents] = useState<Rent[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [monthlyServices, setMonthlyServices] = useState<MonthlyService[]>([]);
   const [loading, setLoading] = useState(true);
   const [openPaymentModal, setOpenPaymentModal] = useState(false);
@@ -144,6 +148,18 @@ export default function PaymentsPage() {
     }
   }, [payments]);
 
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms");
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(data);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -151,12 +167,13 @@ export default function PaymentsPage() {
         fetchPayments(),
         fetchTenants(),
         fetchRents(),
+        fetchRooms(),
         fetchMonthlyServices(),
       ]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchRooms]);
 
   useEffect(() => {
     loadData();
@@ -550,7 +567,7 @@ export default function PaymentsPage() {
       balance: payment.balance,
       status: payment.status as "Paid" | "Partial" | "Pending" | "Overdue",
       paymentDate: payment.paymentDate ? dayjs(payment.paymentDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
-      monthlyServiceId: (payment as any).monthlyServiceId || "",
+      monthlyServiceId: payment.monthlyServiceId || "",
       notes: payment.notes || "",
     });
     setOpenPaymentModal(true);
@@ -559,12 +576,14 @@ export default function PaymentsPage() {
   const printInvoice = (payment: Payment) => {
     // Get monthly service info if available
     let serviceInfo = null;
-    if ((payment as any).monthlyServiceId && monthlyServices.length > 0) {
-      serviceInfo = monthlyServices.find((s) => s.id === (payment as any).monthlyServiceId);
+    if (payment.monthlyServiceId && monthlyServices.length > 0) {
+      serviceInfo = monthlyServices.find((s) => s.id === payment.monthlyServiceId);
     }
 
     // Get rent info for the tenant
     const tenantRent = rents.find((r) => r.tenantId === payment.tenantId);
+    // Look up room information
+    const tenantRoom = tenantRent ? rooms.find((r) => r.id === tenantRent.roomId) : null;
 
     try {
       const printWindow = window.open("", "_blank", "width=800,height=600");
@@ -709,9 +728,9 @@ export default function PaymentsPage() {
               <h3>Bill To</h3>
               <p><strong>${payment.tenant?.name || "N/A"}</strong></p>
               <p>${payment.tenant?.phone || "N/A"}</p>
-              ${tenantRent && tenantRent.roomId ? `
-                <p>Room: ${tenantRent.room?.name || "N/A"}</p>
-                <p>House: ${tenantRent.room?.house?.name || "N/A"}</p>
+              ${tenantRent && tenantRoom ? `
+                <p>Room: ${tenantRoom.name || "N/A"}</p>
+                <p>House: ${tenantRoom.house?.name || "N/A"}</p>
               ` : ""}
             </div>
             <div class="info-section" style="text-align: right;">
@@ -1129,14 +1148,15 @@ export default function PaymentsPage() {
                           (today.isBefore(dayjs(r.endDate)) || today.isSame(dayjs(r.endDate), "day"))
                       );
 
-                      if (activeRent && (activeRent as any).roomId) {
+                      if (activeRent && activeRent.roomId) {
                         // Filter monthly services for this tenant's room
                         const tenantServices = monthlyServices.filter(
-                          (s) => s.roomId === (activeRent as any).roomId
+                          (s) => s.roomId === activeRent.roomId
                         );
+                        const serviceRoom = rooms.find((r) => r.id === activeRent.roomId);
                         return tenantServices.map((service) => (
                           <option key={service.id} value={service.id}>
-                            {dayjs(service.month).format("MMM YYYY")} - ${service.totalAmount.toFixed(2)} ({service.room?.name || "N/A"})
+                            {dayjs(service.month).format("MMM YYYY")} - ${service.totalAmount.toFixed(2)} ({serviceRoom?.name || "N/A"})
                           </option>
                         ));
                       }

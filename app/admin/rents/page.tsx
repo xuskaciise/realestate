@@ -62,16 +62,6 @@ type Rent = {
   contract: string | null;
   createdAt: string;
   updatedAt: string;
-  room?: {
-    id: string;
-    name: string;
-    monthlyRent: number;
-    house: {
-      id: string;
-      name: string;
-      address: string;
-    };
-  };
   tenant?: {
     id: string;
     name: string;
@@ -891,10 +881,16 @@ export default function RentsPage() {
                     <TableCell>
                       <div>
                         <div className="font-medium">
-                          {rent.room?.name || "N/A"}
+                          {(() => {
+                            const rentRoom = rooms.find((r) => r.id === rent.roomId);
+                            return rentRoom?.name || "N/A";
+                          })()}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {rent.room?.house.name || "N/A"}
+                          {(() => {
+                            const rentRoom = rooms.find((r) => r.id === rent.roomId);
+                            return rentRoom?.house.name || "N/A";
+                          })()}
                         </div>
                       </div>
                     </TableCell>

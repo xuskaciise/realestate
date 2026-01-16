@@ -38,13 +38,14 @@ type Rent = {
     name: string;
     phone: string;
   };
-  room?: {
-    id: string;
+};
+
+type Room = {
+  id: string;
+  name: string;
+  house: {
     name: string;
-    house: {
-      name: string;
-      address: string;
-    };
+    address: string;
   };
 };
 
@@ -74,6 +75,7 @@ type Tenant = {
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<"rent" | "payment">("rent");
   const [rents, setRents] = useState<Rent[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,14 +135,26 @@ export default function ReportsPage() {
     }
   }, []);
 
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms");
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(data);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchRents(), fetchPayments(), fetchTenants()]);
+      await Promise.all([fetchRents(), fetchRooms(), fetchPayments(), fetchTenants()]);
     } finally {
       setLoading(false);
     }
-  }, [fetchRents, fetchPayments, fetchTenants]);
+  }, [fetchRents, fetchRooms, fetchPayments, fetchTenants]);
 
   useEffect(() => {
     loadData();
@@ -180,9 +194,11 @@ export default function ReportsPage() {
   // Export to Excel
   const exportToExcel = () => {
     if (activeTab === "rent") {
-      const data = filteredRents.map((rent) => ({
-        "Room": rent.room?.name || "N/A",
-        "House": rent.room?.house.name || "N/A",
+      const data = filteredRents.map((rent) => {
+        const rentRoom = rooms.find((r) => r.id === rent.roomId);
+        return {
+        "Room": rentRoom?.name || "N/A",
+        "House": rentRoom?.house.name || "N/A",
         "Tenant": rent.tenant?.name || "N/A",
         "Tenant Phone": rent.tenant?.phone || "N/A",
         "Guarantor": rent.guarantorName,
@@ -256,10 +272,12 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                ${filteredRents.map((rent) => `
+                ${filteredRents.map((rent) => {
+                  const rentRoom = rooms.find((r) => r.id === rent.roomId);
+                  return `
                   <tr>
-                    <td>${rent.room?.name || "N/A"}</td>
-                    <td>${rent.room?.house.name || "N/A"}</td>
+                    <td>${rentRoom?.name || "N/A"}</td>
+                    <td>${rentRoom?.house.name || "N/A"}</td>
                     <td>${rent.tenant?.name || "N/A"}</td>
                     <td>${rent.guarantorName}</td>
                     <td>$${rent.monthlyRent.toLocaleString()}</td>
@@ -334,9 +352,11 @@ export default function ReportsPage() {
       doc.text("Rent Report", 14, 15);
       doc.text(`Generated: ${dayjs().format("YYYY-MM-DD HH:mm")}`, 14, 22);
 
-      const tableData = filteredRents.map((rent) => [
-        rent.room?.name || "N/A",
-        rent.room?.house.name || "N/A",
+      const tableData = filteredRents.map((rent) => {
+        const rentRoom = rooms.find((r) => r.id === rent.roomId);
+        return [
+        rentRoom?.name || "N/A",
+        rentRoom?.house.name || "N/A",
         rent.tenant?.name || "N/A",
         rent.guarantorName,
         `$${rent.monthlyRent.toLocaleString()}`,
@@ -634,10 +654,12 @@ export default function ReportsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredRents.map((rent) => (
+                    filteredRents.map((rent) => {
+                      const rentRoom = rooms.find((r) => r.id === rent.roomId);
+                      return (
                       <TableRow key={rent.id}>
-                        <TableCell>{rent.room?.name || "N/A"}</TableCell>
-                        <TableCell>{rent.room?.house.name || "N/A"}</TableCell>
+                        <TableCell>{rentRoom?.name || "N/A"}</TableCell>
+                        <TableCell>{rentRoom?.house.name || "N/A"}</TableCell>
                         <TableCell>{rent.tenant?.name || "N/A"}</TableCell>
                         <TableCell>
                           <div>

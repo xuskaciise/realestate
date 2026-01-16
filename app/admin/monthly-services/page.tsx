@@ -74,15 +74,6 @@ type MonthlyService = {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
-  room?: {
-    id: string;
-    name: string;
-    house: {
-      id: string;
-      name: string;
-      address: string;
-    };
-  };
 };
 
 type Room = {
@@ -102,8 +93,8 @@ export default function MonthlyServicesPage() {
   const router = useRouter();
   const [services, setServices] = useState<MonthlyService[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [rents, setRents] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [rents, setRents] = useState<Array<{ id: string; roomId: string; tenantId: string; startDate: string; endDate: string; tenant?: { id: string; name: string; phone: string } }>>([]);
+  const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [openServiceModal, setOpenServiceModal] = useState(false);
   const [editingService, setEditingService] = useState<MonthlyService | null>(null);
@@ -239,18 +230,7 @@ export default function MonthlyServicesPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.length > 0) {
-          // Ensure all services have room data
-          const servicesWithRoom = data.map((service: MonthlyService) => {
-            if (!service.room && service.roomId) {
-              // Try to find room from rooms list
-              const room = rooms.find((r) => r.id === service.roomId);
-              if (room) {
-                return { ...service, room };
-              }
-            }
-            return service;
-          });
-          setServices(servicesWithRoom);
+          setServices(data);
         } else {
           loadFromLocalStorage();
         }
@@ -296,12 +276,12 @@ export default function MonthlyServicesPage() {
         const activeRentRoomIds = new Set(
           rents
             .filter(
-              (rent: any) =>
+              (rent) =>
                 rent.roomId &&
                 (today.isAfter(dayjs(rent.startDate)) || today.isSame(dayjs(rent.startDate), "day")) &&
                 (today.isBefore(dayjs(rent.endDate)) || today.isSame(dayjs(rent.endDate), "day"))
             )
-            .map((rent: any) => rent.roomId)
+            .map((rent) => rent.roomId)
         );
         return allRooms.filter((room) => activeRentRoomIds.has(room.id));
       }
@@ -351,7 +331,22 @@ export default function MonthlyServicesPage() {
 
     try {
       // Prepare form data - use null for empty optional fields
-      const formData: any = {
+      const formData: {
+        roomId: string;
+        month: string;
+        waterPrevious?: number;
+        waterCurrent?: number;
+        waterPricePerUnit?: number;
+        waterTotal?: number;
+        electricityPrevious?: number;
+        electricityCurrent?: number;
+        electricityPricePerUnit?: number;
+        electricityTotal?: number;
+        trashFee?: number;
+        maintenanceFee?: number;
+        totalAmount: number;
+        notes?: string;
+      } = {
         roomId: serviceForm.roomId,
         month: serviceForm.month,
         totalAmount: serviceForm.totalAmount,
@@ -558,7 +553,7 @@ export default function MonthlyServicesPage() {
       addToast({
         type: "danger",
         title: "No Rent Found",
-        message: `No rent found for room "${service.room?.name || service.roomId}". Please ensure the room has an active rent contract.`,
+        message: `No rent found for room "${rooms.find((r) => r.id === service.roomId)?.name || service.roomId}". Please ensure the room has an active rent contract.`,
       });
       return;
     }
@@ -579,7 +574,7 @@ export default function MonthlyServicesPage() {
 
   const printUnpaidInvoice = (service: MonthlyService) => {
     // Check if this service has been paid
-    const isPaid = payments.some((p: any) => p.monthlyServiceId === service.id);
+    const isPaid = payments.some((p) => (p as { monthlyServiceId?: string }).monthlyServiceId === service.id);
     
     // Find the active rent for this room to get the tenant
     const today = dayjs();
@@ -605,7 +600,7 @@ export default function MonthlyServicesPage() {
       addToast({
         type: "danger",
         title: "No Rent Found",
-        message: `No rent found for room "${service.room?.name || service.roomId}". Cannot generate invoice.`,
+        message: `No rent found for room "${rooms.find((r) => r.id === service.roomId)?.name || service.roomId}". Cannot generate invoice.`,
       });
       return;
     }
@@ -743,9 +738,14 @@ export default function MonthlyServicesPage() {
                 <h3>Bill To</h3>
                 <p><strong>${tenant?.name || "N/A"}</strong></p>
                 <p>${tenant?.phone || "N/A"}</p>
-                <p>Room: ${service.room?.name || "N/A"}</p>
-                <p>House: ${service.room?.house?.name || "N/A"}</p>
-                <p>Address: ${service.room?.house?.address || "N/A"}</p>
+                ${(() => {
+                  const serviceRoom = rooms.find((r) => r.id === service.roomId);
+                  return `
+                <p>Room: ${serviceRoom?.name || "N/A"}</p>
+                <p>House: ${serviceRoom?.house?.name || "N/A"}</p>
+                <p>Address: ${serviceRoom?.house?.address || "N/A"}</p>
+                `;
+                })()}
               </div>
               <div class="info-section" style="text-align: right;">
                 <h3>Invoice Details</h3>
@@ -925,7 +925,7 @@ export default function MonthlyServicesPage() {
         const rents = await response.json();
         const today = dayjs();
         const activeRent = rents.find(
-          (rent: any) =>
+          (rent) =>
             rent.roomId === roomId &&
             (today.isAfter(dayjs(rent.startDate)) || today.isSame(dayjs(rent.startDate), "day")) &&
             (today.isBefore(dayjs(rent.endDate)) || today.isSame(dayjs(rent.endDate), "day"))
@@ -947,7 +947,7 @@ export default function MonthlyServicesPage() {
             if (paymentsResponse.ok) {
               const payments = await paymentsResponse.json();
               const tenantPayments = payments.filter(
-                (p: any) => p.tenantId === activeRent.tenantId
+                (p) => p.tenantId === activeRent.tenantId
               );
 
               // If there's a payment record, we could update it
@@ -1045,13 +1045,25 @@ export default function MonthlyServicesPage() {
                       <TableCell className="font-medium">
                         {dayjs(service.month).format("MMM YYYY")}
                       </TableCell>
-                      <TableCell>{service.room?.name || "N/A"}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const serviceRoom = rooms.find((r) => r.id === service.roomId);
+                          return serviceRoom?.name || "N/A";
+                        })()}
+                      </TableCell>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{service.room?.house.name || "N/A"}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {service.room?.house.address || "N/A"}
-                          </div>
+                          {(() => {
+                            const serviceRoom = rooms.find((r) => r.id === service.roomId);
+                            return (
+                              <>
+                                <div className="font-medium">{serviceRoom?.house.name || "N/A"}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {serviceRoom?.house.address || "N/A"}
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </TableCell>
                       <TableCell>
