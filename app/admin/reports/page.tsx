@@ -287,7 +287,8 @@ export default function ReportsPage() {
                     <td>${dayjs(rent.startDate).format("YYYY-MM-DD")}</td>
                     <td>${dayjs(rent.endDate).format("YYYY-MM-DD")}</td>
                   </tr>
-                `).join("")}
+                `;
+                }).join("")}
               </tbody>
             </table>
           </body>
