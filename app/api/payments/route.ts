@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import Payment from "@/lib/models/Payment";
 import Tenant from "@/lib/models/Tenant";
+import MonthlyService from "@/lib/models/MonthlyService";
 import { z } from "zod";
 
 const paymentSchema = z.object({
@@ -54,12 +55,55 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
+    // Calculate total due amount
+    let totalDue = validated.monthlyRent;
+    if (validated.monthlyServiceId) {
+      const service = await MonthlyService.findById(validated.monthlyServiceId).lean();
+      if (service) {
+        totalDue += service.totalAmount;
+      }
+    }
+
+    // Find all previous payments for this tenant (and same service if applicable)
+    const query: any = { tenantId: validated.tenantId };
+    if (validated.monthlyServiceId) {
+      query.monthlyServiceId = validated.monthlyServiceId;
+    } else {
+      // If no service, only count payments without service or with same monthlyRent
+      query.$or = [
+        { monthlyServiceId: null },
+        { monthlyRent: validated.monthlyRent }
+      ];
+    }
+
+    const previousPayments = await Payment.find(query).lean();
+    
+    // Calculate cumulative paid amount (excluding current payment)
+    const previousPaidAmount = previousPayments.reduce(
+      (sum, payment) => sum + (payment.paidAmount || 0),
+      0
+    );
+
+    // Calculate new balance: total due - (previous payments + current payment)
+    const totalPaidAmount = previousPaidAmount + validated.paidAmount;
+    const newBalance = totalDue - totalPaidAmount;
+
+    // Determine status based on balance
+    let status: "Paid" | "Partial" | "Pending" | "Overdue" = validated.status;
+    if (newBalance <= 0) {
+      status = "Paid";
+    } else if (totalPaidAmount > 0) {
+      status = "Partial";
+    } else {
+      status = "Pending";
+    }
+
     const payment = new Payment({
       tenantId: validated.tenantId,
       monthlyRent: validated.monthlyRent,
       paidAmount: validated.paidAmount,
-      balance: validated.balance,
-      status: validated.status,
+      balance: newBalance,
+      status: status,
       paymentDate: new Date(validated.paymentDate),
       monthlyServiceId: validated.monthlyServiceId || null,
       notes: validated.notes || null,

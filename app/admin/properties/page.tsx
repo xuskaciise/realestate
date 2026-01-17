@@ -27,6 +27,7 @@ import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
 import { Home, Plus, Trash2, Edit, Building2, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { LoadingOverlay } from "@/components/ui/loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,7 +100,6 @@ export default function PropertiesPage() {
 
   const fetchHouses = useCallback(async () => {
     try {
-      setLoading(true);
       const response = await fetch("/api/houses", {
         cache: 'no-store',
         headers: {
@@ -123,6 +123,7 @@ export default function PropertiesPage() {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
     fetchHouses();
   }, [fetchHouses]);
 
@@ -381,17 +382,13 @@ export default function PropertiesPage() {
     setRoomsCurrentPage({ ...roomsCurrentPage, [houseId]: 1 });
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-muted-foreground font-medium">Loading properties...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingOverlay message="Loading properties..." size="lg" />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>

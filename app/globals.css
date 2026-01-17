@@ -69,6 +69,30 @@
   .shadow-medium {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   }
+  
+  /* Loading Spinner Animation */
+  @keyframes spin-gradient {
+    0% {
+      transform: rotate(0deg);
+      border-color: hsl(221.2 83.2% 53.3%);
+    }
+    50% {
+      border-color: hsl(221.2 83.2% 48%);
+    }
+    100% {
+      transform: rotate(360deg);
+      border-color: hsl(221.2 83.2% 53.3%);
+    }
+  }
+  
+  .loading-spinner {
+    border: 3px solid transparent;
+    border-top-color: hsl(221.2 83.2% 53.3%);
+    border-right-color: hsl(221.2 83.2% 48%);
+    border-bottom-color: hsl(221.2 83.2% 53.3%);
+    border-left-color: hsl(221.2 83.2% 48%);
+    animation: spin-gradient 1s linear infinite;
+  }
 }
 
 @layer base {

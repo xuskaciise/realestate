@@ -27,6 +27,7 @@ import { z } from "zod";
 import dayjs from "dayjs";
 import { User, Plus, Trash2, Edit, Upload, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
+import { LoadingOverlay } from "@/components/ui/loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -266,16 +267,13 @@ export default function TenantsPage() {
     setCurrentPage(1);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingOverlay message="Loading tenants..." size="lg" />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

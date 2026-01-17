@@ -73,6 +73,22 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
+    // Check for duplicate service (same room and month)
+    const existingService = await MonthlyService.findOne({
+      roomId: validated.roomId,
+      month: validated.month,
+    }).lean();
+
+    if (existingService) {
+      return NextResponse.json(
+        { 
+          error: "Duplicate service", 
+          message: `A service already exists for this room in ${validated.month}. Please edit the existing service instead.` 
+        },
+        { status: 409 } // 409 Conflict
+      );
+    }
+
     const service = new MonthlyService({
       roomId: validated.roomId,
       month: validated.month,

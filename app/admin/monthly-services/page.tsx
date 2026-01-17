@@ -27,6 +27,7 @@ import dayjs from "dayjs";
 import { Droplet, Zap, Trash2, Wrench, Plus, Edit, X, CreditCard, Printer } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
+import { LoadingOverlay } from "@/components/ui/loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,7 +92,7 @@ export default function MonthlyServicesPage() {
   const [services, setServices] = useState<MonthlyService[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [rents, setRents] = useState<Array<{ id: string; roomId: string; tenantId: string; monthlyRent: number; startDate: string; endDate: string; tenant?: { id: string; name: string; phone: string } }>>([]);
-  const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number }>>([]);
+  const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number; monthlyServiceId?: string | null }>>([]);
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [openServiceModal, setOpenServiceModal] = useState(false);
@@ -270,6 +271,28 @@ export default function MonthlyServicesPage() {
     }
   }, []);
 
+  const fetchPayments = useCallback(async () => {
+    try {
+      const response = await fetch("/api/payments", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data || []);
+      } else {
+        setPayments([]);
+      }
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+      setPayments([]);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -279,11 +302,12 @@ export default function MonthlyServicesPage() {
         fetchServices(),
         fetchRents(),
         fetchTenants(),
+        fetchPayments(),
       ]);
     } finally {
       setLoading(false);
     }
-  }, [fetchRooms, fetchServices, fetchRents, fetchTenants]);
+  }, [fetchRooms, fetchServices, fetchRents, fetchTenants, fetchPayments]);
 
   useEffect(() => {
     loadData();
@@ -293,41 +317,41 @@ export default function MonthlyServicesPage() {
   // Auto-calculate water total
   useEffect(() => {
     if (
-      serviceForm.waterCurrent > 0 &&
-      serviceForm.waterPrevious >= 0 &&
-      serviceForm.waterPricePerUnit > 0
+      typeof serviceForm.waterCurrent === 'number' &&
+      typeof serviceForm.waterPrevious === 'number' &&
+      typeof serviceForm.waterPricePerUnit === 'number'
     ) {
       const consumption = serviceForm.waterCurrent - serviceForm.waterPrevious;
-      const total = consumption > 0 ? consumption * serviceForm.waterPricePerUnit : 0;
+      // Calculate total: if consumption is negative or zero, set to 0 (meter reset or error)
+      const total = consumption > 0 && serviceForm.waterPricePerUnit > 0 
+        ? consumption * serviceForm.waterPricePerUnit 
+        : 0;
       setServiceForm((prev) => ({ ...prev, waterTotal: total }));
-    } else {
-      setServiceForm((prev) => ({ ...prev, waterTotal: 0 }));
     }
-    calculateTotal();
   }, [serviceForm.waterCurrent, serviceForm.waterPrevious, serviceForm.waterPricePerUnit]);
 
   // Auto-calculate electricity total
   useEffect(() => {
     if (
-      serviceForm.electricityCurrent > 0 &&
-      serviceForm.electricityPrevious >= 0 &&
-      serviceForm.electricityPricePerUnit > 0
+      typeof serviceForm.electricityCurrent === 'number' &&
+      typeof serviceForm.electricityPrevious === 'number' &&
+      typeof serviceForm.electricityPricePerUnit === 'number'
     ) {
       const consumption = serviceForm.electricityCurrent - serviceForm.electricityPrevious;
-      const total = consumption > 0 ? consumption * serviceForm.electricityPricePerUnit : 0;
+      // Calculate total: if consumption is negative or zero, set to 0 (meter reset or error)
+      const total = consumption > 0 && serviceForm.electricityPricePerUnit > 0 
+        ? consumption * serviceForm.electricityPricePerUnit 
+        : 0;
       setServiceForm((prev) => ({ ...prev, electricityTotal: total }));
-    } else {
-      setServiceForm((prev) => ({ ...prev, electricityTotal: 0 }));
     }
-    calculateTotal();
   }, [
     serviceForm.electricityCurrent,
     serviceForm.electricityPrevious,
     serviceForm.electricityPricePerUnit,
   ]);
 
-  // Calculate total amount
-  const calculateTotal = useCallback(() => {
+  // Calculate total amount whenever any component changes
+  useEffect(() => {
     const total =
       (serviceForm.waterTotal || 0) +
       (serviceForm.electricityTotal || 0) +
@@ -336,9 +360,45 @@ export default function MonthlyServicesPage() {
     setServiceForm((prev) => ({ ...prev, totalAmount: total }));
   }, [serviceForm.waterTotal, serviceForm.electricityTotal, serviceForm.trashFee, serviceForm.maintenanceFee]);
 
+  // Auto-fill previous readings when room is selected (only for new services, not when editing)
   useEffect(() => {
-    calculateTotal();
-  }, [calculateTotal]);
+    if (serviceForm.roomId && !editingService && services.length > 0) {
+      // Find the most recent service for this room (sorted by month descending)
+      const roomServices = services
+        .filter((s) => s.roomId === serviceForm.roomId)
+        .sort((a, b) => {
+          // Sort by month descending (most recent first)
+          const monthA = dayjs(a.month);
+          const monthB = dayjs(b.month);
+          return monthB.valueOf() - monthA.valueOf();
+        });
+
+      if (roomServices.length > 0) {
+        const lastService = roomServices[0];
+        
+        // Auto-fill previous readings from the last service's current readings
+        // Only auto-fill if values are currently 0 (not already set by user)
+        setServiceForm((prev) => {
+          // Only update if we have values to fill and current values are 0
+          if (
+            (prev.waterPrevious === 0 && lastService.waterCurrent) ||
+            (prev.electricityPrevious === 0 && lastService.electricityCurrent) ||
+            (prev.waterPricePerUnit === 0 && lastService.waterPricePerUnit) ||
+            (prev.electricityPricePerUnit === 0 && lastService.electricityPricePerUnit)
+          ) {
+            return {
+              ...prev,
+              waterPrevious: prev.waterPrevious === 0 && lastService.waterCurrent ? lastService.waterCurrent : prev.waterPrevious,
+              electricityPrevious: prev.electricityPrevious === 0 && lastService.electricityCurrent ? lastService.electricityCurrent : prev.electricityPrevious,
+              waterPricePerUnit: prev.waterPricePerUnit === 0 && lastService.waterPricePerUnit ? lastService.waterPricePerUnit : prev.waterPricePerUnit,
+              electricityPricePerUnit: prev.electricityPricePerUnit === 0 && lastService.electricityPricePerUnit ? lastService.electricityPricePerUnit : prev.electricityPricePerUnit,
+            };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [serviceForm.roomId, editingService, services]);
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -382,6 +442,46 @@ export default function MonthlyServicesPage() {
 
       const validated = monthlyServiceSchema.parse(formData);
 
+      // Check for duplicate service (same room and month) - only for new services
+      if (!editingService) {
+        const duplicateService = services.find(
+          (s) => s.roomId === validated.roomId && s.month === validated.month
+        );
+        
+        if (duplicateService) {
+          const roomName = rooms.find((r) => r.id === validated.roomId)?.name || validated.roomId;
+          const monthName = dayjs(validated.month).format("MMMM YYYY");
+          setServiceErrors({
+            month: `A service already exists for room "${roomName}" in ${monthName}. Please edit the existing service instead.`,
+          });
+          addToast({
+            type: "warning",
+            title: "Duplicate Service",
+            message: `A service already exists for room "${roomName}" in ${monthName}. Please edit the existing service instead.`,
+          });
+          return;
+        }
+      } else {
+        // When editing, check if another service exists with same room and month (excluding current)
+        const duplicateService = services.find(
+          (s) => s.id !== editingService.id && s.roomId === validated.roomId && s.month === validated.month
+        );
+        
+        if (duplicateService) {
+          const roomName = rooms.find((r) => r.id === validated.roomId)?.name || validated.roomId;
+          const monthName = dayjs(validated.month).format("MMMM YYYY");
+          setServiceErrors({
+            month: `Another service already exists for room "${roomName}" in ${monthName}. Cannot update to duplicate.`,
+          });
+          addToast({
+            type: "warning",
+            title: "Duplicate Service",
+            message: `Another service already exists for room "${roomName}" in ${monthName}. Cannot update to duplicate.`,
+          });
+          return;
+        }
+      }
+
       if (editingService) {
         try {
           const response = await fetch(`/api/monthly-services/${editingService.id}`, {
@@ -402,6 +502,20 @@ export default function MonthlyServicesPage() {
             await fetchServices();
           } else {
             const errorData = await response.json().catch(() => ({}));
+            // Handle duplicate service error specifically
+            if (response.status === 409) {
+              const roomName = rooms.find((r) => r.id === validated.roomId)?.name || validated.roomId;
+              const monthName = dayjs(validated.month).format("MMMM YYYY");
+              setServiceErrors({
+                month: errorData.message || `Another service already exists for room "${roomName}" in ${monthName}.`,
+              });
+              addToast({
+                type: "warning",
+                title: "Duplicate Service",
+                message: errorData.message || `Another service already exists for room "${roomName}" in ${monthName}.`,
+              });
+              return;
+            }
             throw new Error(errorData.error || "Failed to update service");
           }
         } catch (error) {
@@ -452,6 +566,20 @@ export default function MonthlyServicesPage() {
             await fetchServices();
           } else {
             const errorData = await response.json().catch(() => ({}));
+            // Handle duplicate service error specifically
+            if (response.status === 409) {
+              const roomName = rooms.find((r) => r.id === validated.roomId)?.name || validated.roomId;
+              const monthName = dayjs(validated.month).format("MMMM YYYY");
+              setServiceErrors({
+                month: errorData.message || `A service already exists for room "${roomName}" in ${monthName}.`,
+              });
+              addToast({
+                type: "warning",
+                title: "Duplicate Service",
+                message: errorData.message || `A service already exists for room "${roomName}" in ${monthName}.`,
+              });
+              return;
+            }
             throw new Error(errorData.error || "Failed to create service");
           }
         } catch (error) {
@@ -573,28 +701,113 @@ export default function MonthlyServicesPage() {
     setOpenPaymentModal(true);
   };
 
-  // Calculate balance when paid amount changes (only based on service, not rent)
+  // Calculate balance when paid amount changes (considering previous payments for same service)
   useEffect(() => {
     if (paymentService) {
       // Only use monthly service total, not monthly rent
       const totalDue = paymentService.totalAmount;
-      const balance = totalDue - paymentForm.paidAmount;
+
+      // Find all previous payments for this tenant and same service
+      let previousPaidAmount = 0;
+      if (paymentForm.tenantId) {
+        const previousPayments = payments.filter((p) => {
+          if (p.tenantId !== paymentForm.tenantId) return false;
+          return p.monthlyServiceId === paymentService.id;
+        });
+        
+        previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+      }
+
+      // Calculate balance: total due - (previous payments + current payment)
+      const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
+      const balance = totalDue - totalPaidAmount;
       setPaymentForm((prev) => ({ ...prev, balance }));
 
       // Auto-update status based on balance
       if (balance <= 0) {
         setPaymentForm((prev) => ({ ...prev, status: "Paid" }));
-      } else if (paymentForm.paidAmount > 0) {
+      } else if (totalPaidAmount > 0) {
         setPaymentForm((prev) => ({ ...prev, status: "Partial" }));
       } else {
         setPaymentForm((prev) => ({ ...prev, status: "Pending" }));
       }
     }
-  }, [paymentForm.paidAmount, paymentService]);
+  }, [paymentForm.paidAmount, paymentForm.tenantId, paymentService, payments]);
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentErrors({});
+
+    // Validate balance calculation
+    if (!paymentService) {
+      setPaymentErrors({
+        monthlyServiceId: "Monthly service is required",
+      });
+      addToast({
+        type: "danger",
+        title: "Validation Error",
+        message: "Monthly service is required for payment.",
+      });
+      return;
+    }
+
+    const totalDue = paymentService.totalAmount;
+
+    // Find all previous payments for this tenant and same service
+    let previousPaidAmount = 0;
+    if (paymentForm.tenantId) {
+      const previousPayments = payments.filter((p) => {
+        if (p.tenantId !== paymentForm.tenantId) return false;
+        return p.monthlyServiceId === paymentService.id;
+      });
+      
+      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+    }
+
+    const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
+    const calculatedBalance = totalDue - totalPaidAmount;
+
+    // Calculate remaining balance before this payment
+    const remainingBalance = totalDue - previousPaidAmount;
+
+    // Prevent payment creation if balance is already zero or negative
+    if (remainingBalance <= 0) {
+      setPaymentErrors({
+        paidAmount: `Cannot create payment. Balance is already paid ($${remainingBalance.toFixed(2)}). No payment needed.`,
+      });
+      addToast({
+        type: "warning",
+        title: "Payment Not Needed",
+        message: `Balance is already paid ($${remainingBalance.toFixed(2)}). No payment needed.`,
+      });
+      return;
+    }
+
+    // Validate that paid amount doesn't exceed what's needed (allow small overpayment tolerance)
+    if (paymentForm.paidAmount > remainingBalance + 0.01) { // Allow 1 cent tolerance for rounding
+      setPaymentErrors({
+        paidAmount: `Payment amount ($${paymentForm.paidAmount.toFixed(2)}) exceeds remaining balance ($${remainingBalance.toFixed(2)}). Maximum allowed: $${remainingBalance.toFixed(2)}`,
+      });
+      addToast({
+        type: "danger",
+        title: "Invalid Payment Amount",
+        message: `Payment amount exceeds remaining balance. Maximum allowed: $${remainingBalance.toFixed(2)}`,
+      });
+      return;
+    }
+
+    // Validate balance matches calculation
+    if (Math.abs(paymentForm.balance - calculatedBalance) > 0.01) {
+      setPaymentErrors({
+        balance: `Balance calculation mismatch. Expected: $${calculatedBalance.toFixed(2)}, Got: $${paymentForm.balance.toFixed(2)}`,
+      });
+      addToast({
+        type: "danger",
+        title: "Balance Calculation Error",
+        message: "Balance calculation is incorrect. Please check the payment amount.",
+      });
+      return;
+    }
 
     try {
       const validated = paymentSchema.parse(paymentForm);
@@ -609,7 +822,7 @@ export default function MonthlyServicesPage() {
         addToast({
           type: "success",
           title: "Payment Added",
-          message: "Payment has been added successfully.",
+          message: "Payment has been added successfully. Balance updated.",
         });
         setOpenPaymentModal(false);
         setPaymentService(null);
@@ -623,8 +836,9 @@ export default function MonthlyServicesPage() {
           monthlyServiceId: "",
           notes: "",
         });
-        // Refresh services to update payment status
+        // Refresh services and payments to update payment status
         await fetchServices();
+        await fetchPayments();
       } else {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to create payment");
@@ -912,35 +1126,20 @@ export default function MonthlyServicesPage() {
       
       // Wait for content to load before printing
       printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
-        }, 500);
+        printWindow.focus();
+        printWindow.print();
       };
       
       // Fallback if onload doesn't fire
-      setTimeout(() => {
-        try {
-          if (printWindow.document.readyState === 'complete') {
-            printWindow.focus();
-            printWindow.print();
-          } else {
-            printWindow.addEventListener('load', () => {
-              setTimeout(() => {
-                printWindow.focus();
-                printWindow.print();
-              }, 500);
-            });
-          }
-        } catch (error) {
-          console.error("Print error:", error);
-          addToast({
-            type: "danger",
-            title: "Print Error",
-            message: "Failed to open print dialog. Please try again.",
-          });
-        }
-      }, 1000);
+      if (printWindow.document.readyState === 'complete') {
+        printWindow.focus();
+        printWindow.print();
+      } else {
+        printWindow.addEventListener('load', () => {
+          printWindow.focus();
+          printWindow.print();
+        });
+      }
     } catch (error) {
       console.error("Print error:", error);
       addToast({
@@ -1076,16 +1275,13 @@ export default function MonthlyServicesPage() {
     setOpenServiceModal(true);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingOverlay message="Loading services..." size="lg" />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Monthly Services</h1>
@@ -1660,11 +1856,37 @@ export default function MonthlyServicesPage() {
                   readOnly
                   className="bg-muted font-semibold"
                 />
-                <p className="text-xs text-muted-foreground">
-                  {paymentService
-                    ? `${paymentService.totalAmount.toFixed(2)} - ${paymentForm.paidAmount.toFixed(2)}`
-                    : "0.00"}
+                <p className={`text-xs ${paymentForm.balance < -0.01 ? "text-orange-600 font-medium" : "text-muted-foreground"}`}>
+                  {(() => {
+                    if (!paymentService) return "0.00";
+                    
+                    // Calculate previous payments
+                    let previousPaidAmount = 0;
+                    if (paymentForm.tenantId) {
+                      const previousPayments = payments.filter((p) => {
+                        if (p.tenantId !== paymentForm.tenantId) return false;
+                        return p.monthlyServiceId === paymentService.id;
+                      });
+                      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+                    }
+                    
+                    const remainingBalance = paymentService.totalAmount - previousPaidAmount;
+                    const totalPaid = previousPaidAmount + paymentForm.paidAmount;
+                    const warning = paymentForm.paidAmount > remainingBalance + 0.01 
+                      ? ` ⚠️ Overpayment! Max: $${remainingBalance.toFixed(2)}`
+                      : "";
+                    
+                    if (previousPaidAmount > 0) {
+                      return `Total Due: $${paymentService.totalAmount.toFixed(2)} - Previous: $${previousPaidAmount.toFixed(2)} - Current: $${paymentForm.paidAmount.toFixed(2)} = $${paymentForm.balance.toFixed(2)}${warning}`;
+                    }
+                    return `Total Due: $${paymentService.totalAmount.toFixed(2)} - Current Payment: $${paymentForm.paidAmount.toFixed(2)}`;
+                  })()}
                 </p>
+                {paymentForm.balance < -0.01 && (
+                  <p className="text-xs text-orange-600 font-medium">
+                    ⚠️ Warning: This payment exceeds the total due amount. Balance will be negative.
+                  </p>
+                )}
               </div>
             </div>
 

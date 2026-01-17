@@ -28,6 +28,7 @@ import { z } from "zod";
 import dayjs from "dayjs";
 import { v4 as uuidv4 } from "uuid";
 import { CreditCard, Plus, Trash2, Edit, ChevronLeft, ChevronRight, Check, Printer } from "lucide-react";
+import { LoadingOverlay } from "@/components/ui/loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +49,7 @@ import {
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
-  monthlyRent: z.number().positive("Monthly rent must be positive"),
+  monthlyRent: z.number().min(0, "Monthly rent must be non-negative"), // Allow 0 for service-only payments
   paidAmount: z.number().min(0, "Paid amount must be non-negative"),
   balance: z.number(),
   status: z.enum(["Paid", "Partial", "Pending", "Overdue"]),
@@ -169,7 +170,7 @@ export default function PaymentsPage() {
     loadData();
   }, [loadData]);
 
-  // Calculate balance when monthly rent or paid amount changes
+  // Calculate balance when monthly rent or paid amount changes (considering previous payments)
   useEffect(() => {
     // Get monthly service amount if selected
     let serviceAmount = 0;
@@ -182,18 +183,37 @@ export default function PaymentsPage() {
 
     // Total amount due = monthly rent + monthly service
     const totalDue = paymentForm.monthlyRent + serviceAmount;
-    const balance = totalDue - paymentForm.paidAmount;
+
+    // Find all previous payments for this tenant (and same service if applicable)
+    let previousPaidAmount = 0;
+    if (paymentForm.tenantId) {
+      const previousPayments = payments.filter((p) => {
+        if (p.tenantId !== paymentForm.tenantId) return false;
+        if (paymentForm.monthlyServiceId) {
+          return p.monthlyServiceId === paymentForm.monthlyServiceId;
+        } else {
+          // If no service, only count payments without service or with same monthlyRent
+          return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
+        }
+      });
+      
+      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+    }
+
+    // Calculate balance: total due - (previous payments + current payment)
+    const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
+    const balance = totalDue - totalPaidAmount;
     setPaymentForm((prev) => ({ ...prev, balance }));
 
     // Auto-update status based on balance
     if (balance <= 0) {
       setPaymentForm((prev) => ({ ...prev, status: "Paid" }));
-    } else if (paymentForm.paidAmount > 0) {
+    } else if (totalPaidAmount > 0) {
       setPaymentForm((prev) => ({ ...prev, status: "Partial" }));
     } else {
       setPaymentForm((prev) => ({ ...prev, status: "Pending" }));
     }
-  }, [paymentForm.monthlyRent, paymentForm.paidAmount, paymentForm.monthlyServiceId, monthlyServices]);
+  }, [paymentForm.monthlyRent, paymentForm.paidAmount, paymentForm.monthlyServiceId, paymentForm.tenantId, monthlyServices, payments]);
 
   // Auto-fill monthly rent when tenant is selected
   useEffect(() => {
@@ -287,6 +307,78 @@ export default function PaymentsPage() {
     e.preventDefault();
     setPaymentErrors({});
 
+    // Validate balance calculation
+    let serviceAmount = 0;
+    if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
+      const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
+      if (selectedService) {
+        serviceAmount = selectedService.totalAmount;
+      }
+    }
+
+    const totalDue = paymentForm.monthlyRent + serviceAmount;
+
+    // Find all previous payments for this tenant (excluding current if editing)
+    let previousPaidAmount = 0;
+    if (paymentForm.tenantId) {
+      const previousPayments = payments.filter((p) => {
+        if (p.tenantId !== paymentForm.tenantId) return false;
+        if (editingPayment && p.id === editingPayment.id) return false; // Exclude current payment if editing
+        if (paymentForm.monthlyServiceId) {
+          return p.monthlyServiceId === paymentForm.monthlyServiceId;
+        } else {
+          return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
+        }
+      });
+      
+      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+    }
+
+    const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
+    const calculatedBalance = totalDue - totalPaidAmount;
+
+    // Calculate remaining balance before this payment
+    const remainingBalance = totalDue - previousPaidAmount;
+
+    // Prevent payment creation if balance is already zero or negative (only for new payments, not edits)
+    if (!editingPayment && remainingBalance <= 0) {
+      setPaymentErrors({
+        paidAmount: `Cannot create payment. Balance is already paid ($${remainingBalance.toFixed(2)}). No payment needed.`,
+      });
+      addToast({
+        type: "warning",
+        title: "Payment Not Needed",
+        message: `Balance is already paid ($${remainingBalance.toFixed(2)}). No payment needed.`,
+      });
+      return;
+    }
+
+    // Validate that paid amount doesn't exceed what's needed (allow small overpayment tolerance)
+    if (paymentForm.paidAmount > remainingBalance + 0.01) { // Allow 1 cent tolerance for rounding
+      setPaymentErrors({
+        paidAmount: `Payment amount ($${paymentForm.paidAmount.toFixed(2)}) exceeds remaining balance ($${remainingBalance.toFixed(2)}). Maximum allowed: $${remainingBalance.toFixed(2)}`,
+      });
+      addToast({
+        type: "danger",
+        title: "Invalid Payment Amount",
+        message: `Payment amount exceeds remaining balance. Maximum allowed: $${remainingBalance.toFixed(2)}`,
+      });
+      return;
+    }
+
+    // Validate balance matches calculation
+    if (Math.abs(paymentForm.balance - calculatedBalance) > 0.01) {
+      setPaymentErrors({
+        balance: `Balance calculation mismatch. Expected: $${calculatedBalance.toFixed(2)}, Got: $${paymentForm.balance.toFixed(2)}`,
+      });
+      addToast({
+        type: "danger",
+        title: "Balance Calculation Error",
+        message: "Balance calculation is incorrect. Please check the payment amount.",
+      });
+      return;
+    }
+
     try {
       const validated = paymentSchema.parse(paymentForm);
 
@@ -342,11 +434,16 @@ export default function PaymentsPage() {
         setPayments(updatedPayments);
 
         try {
-          await fetch("/api/payments", {
+          const response = await fetch("/api/payments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            // Refresh payments to get updated balance from server
+            await fetchPayments();
+          }
         } catch (error) {
           console.error("API create failed, but local create succeeded:", error);
         }
@@ -365,7 +462,7 @@ export default function PaymentsPage() {
         addToast({
           type: "success",
           title: "Payment Added",
-          message: "Payment has been added successfully.",
+          message: "Payment has been added successfully. Balance updated.",
         });
       }
     } catch (error) {
@@ -672,35 +769,20 @@ export default function PaymentsPage() {
       
       // Wait for content to load before printing
       printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
-        }, 500);
+        printWindow.focus();
+        printWindow.print();
       };
       
       // Fallback if onload doesn't fire
-      setTimeout(() => {
-        try {
-          if (printWindow.document.readyState === 'complete') {
-            printWindow.focus();
-            printWindow.print();
-          } else {
-            printWindow.addEventListener('load', () => {
-              setTimeout(() => {
-                printWindow.focus();
-                printWindow.print();
-              }, 500);
-            });
-          }
-        } catch (error) {
-          console.error("Print error:", error);
-          addToast({
-            type: "danger",
-            title: "Print Error",
-            message: "Failed to open print dialog. Please try again.",
-          });
-        }
-      }, 1000);
+      if (printWindow.document.readyState === 'complete') {
+        printWindow.focus();
+        printWindow.print();
+      } else {
+        printWindow.addEventListener('load', () => {
+          printWindow.focus();
+          printWindow.print();
+        });
+      }
     } catch (error) {
       console.error("Print error:", error);
       addToast({
@@ -754,16 +836,13 @@ export default function PaymentsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingOverlay message="Loading payments..." size="lg" />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Payments</h1>
@@ -1099,7 +1178,7 @@ export default function PaymentsPage() {
                     readOnly
                     className="bg-muted font-semibold"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className={`text-xs ${paymentForm.balance < -0.01 ? "text-orange-600 font-medium" : "text-muted-foreground"}`}>
                     {(() => {
                       let serviceAmount = 0;
                       if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
@@ -1109,9 +1188,39 @@ export default function PaymentsPage() {
                         }
                       }
                       const totalDue = paymentForm.monthlyRent + serviceAmount;
-                      return `${totalDue.toFixed(2)} - ${paymentForm.paidAmount.toFixed(2)}`;
+                      
+                      // Calculate previous payments
+                      let previousPaidAmount = 0;
+                      if (paymentForm.tenantId) {
+                        const previousPayments = payments.filter((p) => {
+                          if (p.tenantId !== paymentForm.tenantId) return false;
+                          if (editingPayment && p.id === editingPayment.id) return false; // Exclude current if editing
+                          if (paymentForm.monthlyServiceId) {
+                            return p.monthlyServiceId === paymentForm.monthlyServiceId;
+                          } else {
+                            return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
+                          }
+                        });
+                        previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+                      }
+                      
+                      const remainingBalance = totalDue - previousPaidAmount;
+                      const totalPaid = previousPaidAmount + paymentForm.paidAmount;
+                      
+                      if (previousPaidAmount > 0) {
+                        const warning = paymentForm.paidAmount > remainingBalance + 0.01 
+                          ? ` ⚠️ Overpayment! Max: $${remainingBalance.toFixed(2)}`
+                          : "";
+                        return `Total Due: $${totalDue.toFixed(2)} - Previous: $${previousPaidAmount.toFixed(2)} - Current: $${paymentForm.paidAmount.toFixed(2)} = $${paymentForm.balance.toFixed(2)}${warning}`;
+                      }
+                      return `Total Due: $${totalDue.toFixed(2)} - Current Payment: $${paymentForm.paidAmount.toFixed(2)}`;
                     })()}
                   </p>
+                  {paymentForm.balance < -0.01 && (
+                    <p className="text-xs text-orange-600 font-medium">
+                      ⚠️ Warning: This payment exceeds the total due amount. Balance will be negative.
+                    </p>
+                  )}
                 </div>
               </div>
 

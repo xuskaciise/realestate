@@ -19,6 +19,7 @@ import { FileText, Download, Printer, FileSpreadsheet, Filter, X } from "lucide-
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import { LoadingOverlay } from "@/components/ui/loading";
 
 type Rent = {
   id: string;
@@ -454,16 +455,13 @@ export default function ReportsPage() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {loading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <LoadingOverlay message="Loading reports..." size="lg" />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Reports</h1>

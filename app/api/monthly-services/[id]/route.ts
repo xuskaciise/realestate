@@ -79,6 +79,23 @@ export async function PUT(
 
     await connectDB();
 
+    // Check for duplicate service (same room and month, excluding current service)
+    const existingService = await MonthlyService.findOne({
+      roomId: validated.roomId,
+      month: validated.month,
+      _id: { $ne: params.id }, // Exclude current service
+    }).lean();
+
+    if (existingService) {
+      return NextResponse.json(
+        { 
+          error: "Duplicate service", 
+          message: `Another service already exists for this room in ${validated.month}. Cannot update to duplicate.` 
+        },
+        { status: 409 } // 409 Conflict
+      );
+    }
+
     const service = await MonthlyService.findByIdAndUpdate(
       params.id,
       {
