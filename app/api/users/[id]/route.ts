@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import User from "@/lib/models/User";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
@@ -17,19 +18,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        fullname: true,
-        username: true,
-        type: true,
-        status: true,
-        profile: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    await connectDB();
+    const user = await User.findById(params.id).select("-password").lean();
 
     if (!user) {
       return NextResponse.json(
@@ -38,7 +28,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(user);
+    return NextResponse.json({
+      ...user,
+      id: user._id.toString(),
+    });
   } catch (error) {
     console.error("Error fetching user:", error);
     return NextResponse.json(
@@ -56,10 +49,10 @@ export async function PUT(
     const body = await request.json();
     const validated = updateUserSchema.parse(body);
 
+    await connectDB();
+
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { id: params.id },
-    });
+    const existingUser = await User.findById(params.id);
 
     if (!existingUser) {
       return NextResponse.json(
@@ -70,9 +63,7 @@ export async function PUT(
 
     // Check if username is being changed and if it already exists
     if (validated.username && validated.username !== existingUser.username) {
-      const usernameExists = await prisma.user.findUnique({
-        where: { username: validated.username },
-      });
+      const usernameExists = await User.findOne({ username: validated.username });
 
       if (usernameExists) {
         return NextResponse.json(
@@ -83,35 +74,28 @@ export async function PUT(
     }
 
     // Prepare update data
-    const updateData: any = {
-      ...(validated.fullname && { fullname: validated.fullname }),
-      ...(validated.username && { username: validated.username }),
-      ...(validated.type && { type: validated.type }),
-      ...(validated.status && { status: validated.status }),
-      ...(validated.profile !== undefined && { profile: validated.profile || null }),
-    };
+    const updateData: any = {};
+    if (validated.fullname) updateData.fullname = validated.fullname;
+    if (validated.username) updateData.username = validated.username;
+    if (validated.type) updateData.type = validated.type;
+    if (validated.status) updateData.status = validated.status;
+    if (validated.profile !== undefined) updateData.profile = validated.profile || null;
 
     // Hash password if provided
     if (validated.password) {
       updateData.password = await bcrypt.hash(validated.password, 10);
     }
 
-    const user = await prisma.user.update({
-      where: { id: params.id },
-      data: updateData,
-      select: {
-        id: true,
-        fullname: true,
-        username: true,
-        type: true,
-        status: true,
-        profile: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const user = await User.findByIdAndUpdate(
+      params.id,
+      updateData,
+      { new: true, runValidators: true }
+    ).select("-password").lean();
 
-    return NextResponse.json(user);
+    return NextResponse.json({
+      ...user,
+      id: user._id.toString(),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -132,9 +116,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: params.id },
-    });
+    await connectDB();
+    const user = await User.findByIdAndDelete(params.id);
 
     if (!user) {
       return NextResponse.json(
@@ -142,10 +125,6 @@ export async function DELETE(
         { status: 404 }
       );
     }
-
-    await prisma.user.delete({
-      where: { id: params.id },
-    });
 
     return NextResponse.json({ message: "User deleted successfully" });
   } catch (error) {

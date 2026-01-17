@@ -57,6 +57,7 @@ type Payment = {
   balance: number;
   status: string;
   paymentDate: string;
+  monthlyServiceId?: string | null;
   notes: string | null;
   createdAt: string;
   tenant?: {
@@ -64,6 +65,13 @@ type Payment = {
     name: string;
     phone: string;
   };
+};
+
+type MonthlyService = {
+  id: string;
+  roomId: string;
+  month: string;
+  totalAmount: number;
 };
 
 type Tenant = {
@@ -78,6 +86,7 @@ export default function ReportsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [monthlyServices, setMonthlyServices] = useState<MonthlyService[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Rent filters
@@ -94,6 +103,7 @@ export default function ReportsPage() {
     endDate: "",
     tenantId: "",
     status: "",
+    monthlyServiceId: "",
   });
 
   const [showRentFilters, setShowRentFilters] = useState(false);
@@ -147,14 +157,26 @@ export default function ReportsPage() {
     }
   }, []);
 
+  const fetchMonthlyServices = useCallback(async () => {
+    try {
+      const response = await fetch("/api/monthly-services");
+      if (response.ok) {
+        const data = await response.json();
+        setMonthlyServices(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching monthly services:", error);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchRents(), fetchRooms(), fetchPayments(), fetchTenants()]);
+      await Promise.all([fetchRents(), fetchRooms(), fetchPayments(), fetchTenants(), fetchMonthlyServices()]);
     } finally {
       setLoading(false);
     }
-  }, [fetchRents, fetchRooms, fetchPayments, fetchTenants]);
+  }, [fetchRents, fetchRooms, fetchPayments, fetchTenants, fetchMonthlyServices]);
 
   useEffect(() => {
     loadData();
@@ -187,6 +209,19 @@ export default function ReportsPage() {
     }
     if (paymentFilters.status && payment.status !== paymentFilters.status) {
       return false;
+    }
+    if (paymentFilters.monthlyServiceId) {
+      // Filter by service: if filter is set, show only payments with that service
+      // If filter is "none", show only payments without a service
+      if (paymentFilters.monthlyServiceId === "none") {
+        if (payment.monthlyServiceId) {
+          return false;
+        }
+      } else {
+        if (payment.monthlyServiceId !== paymentFilters.monthlyServiceId) {
+          return false;
+        }
+      }
     }
     return true;
   });
@@ -357,16 +392,17 @@ export default function ReportsPage() {
       const tableData = filteredRents.map((rent) => {
         const rentRoom = rooms.find((r) => r.id === rent.roomId);
         return [
-        rentRoom?.name || "N/A",
-        rentRoom?.house.name || "N/A",
-        rent.tenant?.name || "N/A",
-        rent.guarantorName,
-        `$${rent.monthlyRent.toLocaleString()}`,
-        rent.months.toString(),
-        `$${rent.totalRent.toLocaleString()}`,
-        dayjs(rent.startDate).format("YYYY-MM-DD"),
-        dayjs(rent.endDate).format("YYYY-MM-DD"),
-      ]);
+          rentRoom?.name || "N/A",
+          rentRoom?.house.name || "N/A",
+          rent.tenant?.name || "N/A",
+          rent.guarantorName,
+          `$${rent.monthlyRent.toLocaleString()}`,
+          rent.months.toString(),
+          `$${rent.totalRent.toLocaleString()}`,
+          dayjs(rent.startDate).format("YYYY-MM-DD"),
+          dayjs(rent.endDate).format("YYYY-MM-DD"),
+        ];
+      });
 
       (doc as any).autoTable({
         head: [["Room", "House", "Tenant", "Guarantor", "Monthly Rent", "Months", "Total Rent", "Start Date", "End Date"]],
@@ -414,6 +450,7 @@ export default function ReportsPage() {
       endDate: "",
       tenantId: "",
       status: "",
+      monthlyServiceId: "",
     });
   };
 
@@ -557,7 +594,7 @@ export default function ReportsPage() {
           </CardHeader>
           {showPaymentFilters && (
             <CardContent>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
                   <Input
@@ -611,6 +648,24 @@ export default function ReportsPage() {
                     <option value="Overdue">Overdue</option>
                   </select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Monthly Service</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={paymentFilters.monthlyServiceId}
+                    onChange={(e) =>
+                      setPaymentFilters({ ...paymentFilters, monthlyServiceId: e.target.value })
+                    }
+                  >
+                    <option value="">All Services</option>
+                    <option value="none">No Service</option>
+                    {monthlyServices.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {dayjs(service.month).format("MMM YYYY")} - ${service.totalAmount.toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="mt-4">
                 <Button variant="outline" onClick={clearPaymentFilters}>
@@ -659,29 +714,30 @@ export default function ReportsPage() {
                     filteredRents.map((rent) => {
                       const rentRoom = rooms.find((r) => r.id === rent.roomId);
                       return (
-                      <TableRow key={rent.id}>
-                        <TableCell>{rentRoom?.name || "N/A"}</TableCell>
-                        <TableCell>{rentRoom?.house.name || "N/A"}</TableCell>
-                        <TableCell>{rent.tenant?.name || "N/A"}</TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{rent.guarantorName}</div>
-                            <div className="text-sm text-muted-foreground">{rent.guarantorPhone}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          ${rent.monthlyRent.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{rent.months} {rent.months === 1 ? "Month" : "Months"}</Badge>
-                        </TableCell>
-                        <TableCell className="font-bold text-primary">
-                          ${rent.totalRent.toLocaleString()}
-                        </TableCell>
-                        <TableCell>{dayjs(rent.startDate).format("MMM DD, YYYY")}</TableCell>
-                        <TableCell>{dayjs(rent.endDate).format("MMM DD, YYYY")}</TableCell>
-                      </TableRow>
-                    ))
+                        <TableRow key={rent.id}>
+                          <TableCell>{rentRoom?.name || "N/A"}</TableCell>
+                          <TableCell>{rentRoom?.house.name || "N/A"}</TableCell>
+                          <TableCell>{rent.tenant?.name || "N/A"}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{rent.guarantorName}</div>
+                              <div className="text-sm text-muted-foreground">{rent.guarantorPhone}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            ${rent.monthlyRent.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{rent.months} {rent.months === 1 ? "Month" : "Months"}</Badge>
+                          </TableCell>
+                          <TableCell className="font-bold text-primary">
+                            ${rent.totalRent.toLocaleString()}
+                          </TableCell>
+                          <TableCell>{dayjs(rent.startDate).format("MMM DD, YYYY")}</TableCell>
+                          <TableCell>{dayjs(rent.endDate).format("MMM DD, YYYY")}</TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

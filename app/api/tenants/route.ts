@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Tenant from "@/lib/models/Tenant";
 import { z } from "zod";
 
 const tenantSchema = z.object({
@@ -11,16 +12,25 @@ const tenantSchema = z.object({
 
 export async function GET() {
   try {
-    const tenants = await prisma.tenant.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
+    await connectDB();
+    const tenants = await Tenant.find({}).sort({ createdAt: -1 }).lean();
+    const formattedTenants = tenants.map(t => ({
+      ...t,
+      id: t._id.toString(),
+      _id: undefined,
+    }));
+    return NextResponse.json(formattedTenants, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
-    return NextResponse.json(tenants);
   } catch (error) {
     console.error("Error fetching tenants:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch tenants";
     return NextResponse.json(
-      { error: "Failed to fetch tenants" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -31,11 +41,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = tenantSchema.parse(body);
 
-    const tenant = await prisma.tenant.create({
-      data: validated,
+    await connectDB();
+
+    const tenant = new Tenant({
+      name: validated.name,
+      phone: validated.phone,
+      address: validated.address,
+      profile: validated.profile || null,
     });
 
-    return NextResponse.json(tenant, { status: 201 });
+    const savedTenant = await tenant.save();
+    const tenantJson = savedTenant.toJSON();
+    return NextResponse.json(tenantJson, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -44,8 +61,9 @@ export async function POST(request: NextRequest) {
       );
     }
     console.error("Error creating tenant:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to create tenant";
     return NextResponse.json(
-      { error: "Failed to create tenant" },
+      { error: errorMessage, details: error instanceof Error ? error.stack : undefined },
       { status: 500 }
     );
   }

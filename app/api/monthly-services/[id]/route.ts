@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import MonthlyService from "@/lib/models/MonthlyService";
+import Room from "@/lib/models/Room";
+import House from "@/lib/models/House";
 import { z } from "zod";
 
 const monthlyServiceSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
   month: z.string().min(1, "Month is required"),
-  waterPrevious: z.number().min(0).optional(),
-  waterCurrent: z.number().min(0).optional(),
-  waterPricePerUnit: z.number().min(0).optional(),
-  waterTotal: z.number().min(0).optional(),
-  electricityPrevious: z.number().min(0).optional(),
-  electricityCurrent: z.number().min(0).optional(),
-  electricityPricePerUnit: z.number().min(0).optional(),
-  electricityTotal: z.number().min(0).optional(),
-  trashFee: z.number().min(0).optional(),
-  maintenanceFee: z.number().min(0).optional(),
+  waterPrevious: z.number().min(0).nullable().optional(),
+  waterCurrent: z.number().min(0).nullable().optional(),
+  waterPricePerUnit: z.number().min(0).nullable().optional(),
+  waterTotal: z.number().min(0).nullable().optional(),
+  electricityPrevious: z.number().min(0).nullable().optional(),
+  electricityCurrent: z.number().min(0).nullable().optional(),
+  electricityPricePerUnit: z.number().min(0).nullable().optional(),
+  electricityTotal: z.number().min(0).nullable().optional(),
+  trashFee: z.number().min(0).nullable().optional(),
+  maintenanceFee: z.number().min(0).nullable().optional(),
   totalAmount: z.number().min(0, "Total amount must be positive"),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 export async function GET(
@@ -24,16 +27,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const service = await prisma.monthlyService.findUnique({
-      where: { id: params.id },
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-      },
-    });
+    await connectDB();
+    const service = await MonthlyService.findById(params.id).lean();
 
     if (!service) {
       return NextResponse.json(
@@ -42,7 +37,29 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(service);
+    const room = await Room.findById(service.roomId).lean();
+    let house = null;
+    
+    if (room) {
+      house = await House.findById(room.houseId).lean();
+    }
+
+    return NextResponse.json({
+      ...service,
+      id: service._id.toString(),
+      room: room
+        ? {
+            ...room,
+            id: room._id.toString(),
+            house: house
+              ? {
+                  ...house,
+                  id: house._id.toString(),
+                }
+              : null,
+          }
+        : null,
+    });
   } catch (error) {
     console.error("Error fetching monthly service:", error);
     return NextResponse.json(
@@ -60,19 +77,59 @@ export async function PUT(
     const body = await request.json();
     const validated = monthlyServiceSchema.parse(body);
 
-    const service = await prisma.monthlyService.update({
-      where: { id: params.id },
-      data: validated,
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-      },
-    });
+    await connectDB();
 
-    return NextResponse.json(service);
+    const service = await MonthlyService.findByIdAndUpdate(
+      params.id,
+      {
+        roomId: validated.roomId,
+        month: validated.month,
+        waterPrevious: validated.waterPrevious ?? null,
+        waterCurrent: validated.waterCurrent ?? null,
+        waterPricePerUnit: validated.waterPricePerUnit ?? null,
+        waterTotal: validated.waterTotal ?? null,
+        electricityPrevious: validated.electricityPrevious ?? null,
+        electricityCurrent: validated.electricityCurrent ?? null,
+        electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
+        electricityTotal: validated.electricityTotal ?? null,
+        trashFee: validated.trashFee ?? null,
+        maintenanceFee: validated.maintenanceFee ?? null,
+        totalAmount: validated.totalAmount,
+        notes: validated.notes ?? null,
+      },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!service) {
+      return NextResponse.json(
+        { error: "Monthly service not found" },
+        { status: 404 }
+      );
+    }
+
+    const room = await Room.findById(validated.roomId).lean();
+    let house = null;
+    
+    if (room) {
+      house = await House.findById(room.houseId).lean();
+    }
+
+    return NextResponse.json({
+      ...service,
+      id: service._id.toString(),
+      room: room
+        ? {
+            ...room,
+            id: room._id.toString(),
+            house: house
+              ? {
+                  ...house,
+                  id: house._id.toString(),
+                }
+              : null,
+          }
+        : null,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -93,9 +150,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.monthlyService.delete({
-      where: { id: params.id },
-    });
+    await connectDB();
+    const service = await MonthlyService.findByIdAndDelete(params.id);
+
+    if (!service) {
+      return NextResponse.json(
+        { error: "Monthly service not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ message: "Monthly service deleted successfully" });
   } catch (error) {

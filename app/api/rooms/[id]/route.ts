@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Room from "@/lib/models/Room";
+import House from "@/lib/models/House";
 import { z } from "zod";
 
 const roomSchema = z.object({
   name: z.string().min(1, "Name is required"),
   monthlyRent: z.number().positive("Monthly rent must be positive"),
-  houseId: z.string().uuid("Invalid house ID"),
+  houseId: z.string().min(1, "Invalid house ID"),
+  status: z.enum(["available", "rented"]).optional(),
 });
 
 export async function GET(
@@ -13,12 +16,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const room = await prisma.room.findUnique({
-      where: { id: params.id },
-      include: {
-        house: true,
-      },
-    });
+    await connectDB();
+
+    const room = await Room.findById(params.id).lean();
 
     if (!room) {
       return NextResponse.json(
@@ -27,7 +27,18 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(room);
+    const house = await House.findById(room.houseId).lean();
+
+    return NextResponse.json({
+      ...room,
+      house: house
+        ? {
+            ...house,
+            id: house._id.toString(),
+          }
+        : null,
+      id: room._id.toString(),
+    });
   } catch (error) {
     console.error("Error fetching room:", error);
     return NextResponse.json(
@@ -45,25 +56,50 @@ export async function PUT(
     const body = await request.json();
     const validated = roomSchema.parse(body);
 
-    const room = await prisma.room.update({
-      where: { id: params.id },
-      data: validated,
-      include: {
-        house: true,
-      },
-    });
+    await connectDB();
 
-    return NextResponse.json(room);
+    const room = await Room.findByIdAndUpdate(
+      params.id,
+      {
+        name: validated.name,
+        monthlyRent: validated.monthlyRent,
+        houseId: validated.houseId,
+        status: validated.status || "available",
+      },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!room) {
+      return NextResponse.json(
+        { error: "Room not found" },
+        { status: 404 }
+      );
+    }
+
+    const house = await House.findById(validated.houseId).lean();
+
+    return NextResponse.json({
+      ...room,
+      house: house
+        ? {
+            ...house,
+            id: house._id.toString(),
+          }
+        : null,
+      id: room._id.toString(),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error("Validation error:", error.errors);
       return NextResponse.json(
         { error: "Validation error", details: error.errors },
         { status: 400 }
       );
     }
     console.error("Error updating room:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to update room";
     return NextResponse.json(
-      { error: "Failed to update room" },
+      { error: errorMessage, details: error instanceof Error ? error.stack : undefined },
       { status: 500 }
     );
   }
@@ -74,9 +110,16 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.room.delete({
-      where: { id: params.id },
-    });
+    await connectDB();
+
+    const room = await Room.findByIdAndDelete(params.id);
+
+    if (!room) {
+      return NextResponse.json(
+        { error: "Room not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ message: "Room deleted successfully" });
   } catch (error) {

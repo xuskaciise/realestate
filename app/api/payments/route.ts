@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Payment from "@/lib/models/Payment";
+import Tenant from "@/lib/models/Tenant";
 import { z } from "zod";
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
-  monthlyRent: z.number().positive("Monthly rent must be positive"),
+  monthlyRent: z.number().min(0, "Monthly rent must be non-negative"), // Allow 0 for service-only payments
   paidAmount: z.number().min(0, "Paid amount must be non-negative"),
   balance: z.number(),
   status: z.enum(["Paid", "Partial", "Pending", "Overdue"]),
@@ -15,15 +17,27 @@ const paymentSchema = z.object({
 
 export async function GET() {
   try {
-    const payments = await prisma.payment.findMany({
-      include: {
-        tenant: true,
-      },
-      orderBy: {
-        paymentDate: "desc",
-      },
-    });
-    return NextResponse.json(payments);
+    await connectDB();
+    const payments = await Payment.find({}).sort({ paymentDate: -1 }).lean();
+
+    // Populate tenant for each payment
+    const paymentsWithTenant = await Promise.all(
+      payments.map(async (payment) => {
+        const tenant = await Tenant.findById(payment.tenantId).lean();
+        return {
+          ...payment,
+          id: payment._id.toString(),
+          tenant: tenant
+            ? {
+                ...tenant,
+                id: tenant._id.toString(),
+              }
+            : null,
+        };
+      })
+    );
+
+    return NextResponse.json(paymentsWithTenant);
   } catch (error) {
     console.error("Error fetching payments:", error);
     return NextResponse.json(
@@ -38,17 +52,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = paymentSchema.parse(body);
 
-    const payment = await prisma.payment.create({
-      data: {
-        ...validated,
-        paymentDate: new Date(validated.paymentDate),
-      },
-      include: {
-        tenant: true,
-      },
+    await connectDB();
+
+    const payment = new Payment({
+      tenantId: validated.tenantId,
+      monthlyRent: validated.monthlyRent,
+      paidAmount: validated.paidAmount,
+      balance: validated.balance,
+      status: validated.status,
+      paymentDate: new Date(validated.paymentDate),
+      monthlyServiceId: validated.monthlyServiceId || null,
+      notes: validated.notes || null,
     });
 
-    return NextResponse.json(payment, { status: 201 });
+    const savedPayment = await payment.save();
+
+    // Populate tenant for response
+    const tenant = await Tenant.findById(validated.tenantId).lean();
+
+    return NextResponse.json(
+      {
+        ...savedPayment.toJSON(),
+        tenant: tenant
+          ? {
+              ...tenant,
+              id: tenant._id.toString(),
+            }
+          : null,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -5,15 +5,11 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  FileText,
-  Settings,
-  Upload,
   Home,
   Building2,
   Receipt,
   CreditCard,
   BarChart3,
-  FileCheck,
   Droplet,
   UserCog,
 } from "lucide-react";
@@ -37,11 +33,6 @@ const menuItems = [
     icon: Users,
   },
   {
-    title: "Users",
-    href: "/admin/users",
-    icon: UserCog,
-  },
-  {
     title: "Rents",
     href: "/admin/rents",
     icon: Receipt,
@@ -57,29 +48,14 @@ const menuItems = [
     icon: BarChart3,
   },
   {
-    title: "Contracts",
-    href: "/admin/contracts",
-    icon: FileCheck,
-  },
-  {
     title: "Monthly Services",
     href: "/admin/monthly-services",
     icon: Droplet,
   },
   {
-    title: "Documents",
-    href: "/admin/documents",
-    icon: FileText,
-  },
-  {
-    title: "Upload",
-    href: "/admin/upload",
-    icon: Upload,
-  },
-  {
-    title: "Settings",
-    href: "/admin/settings",
-    icon: Settings,
+    title: "Users",
+    href: "/admin/users",
+    icon: UserCog,
   },
 ];
 

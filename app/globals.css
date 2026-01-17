@@ -20,10 +20,14 @@
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 210 40% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
 
   .dark {
@@ -46,6 +50,24 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(221.2 83.2% 53.3%) 0%, hsl(221.2 83.2% 48%) 100%);
+  }
+  .gradient-success {
+    background: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 76% 32%) 100%);
+  }
+  .gradient-danger {
+    background: linear-gradient(135deg, hsl(0 84.2% 60.2%) 0%, hsl(0 84.2% 55%) 100%);
+  }
+  .shadow-soft {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  .shadow-medium {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   }
 }
 

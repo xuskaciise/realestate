@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Rent from "@/lib/models/Rent";
+import Room from "@/lib/models/Room";
+import House from "@/lib/models/House";
+import Tenant from "@/lib/models/Tenant";
 import { z } from "zod";
 
 const rentSchema = z.object({
-  roomId: z.string().uuid("Room must be selected"),
-  tenantId: z.string().uuid("Tenant must be selected"),
+  roomId: z.string().min(1, "Room must be selected"),
+  tenantId: z.string().min(1, "Tenant must be selected"),
   guarantorName: z.string().min(1, "Guarantor name is required"),
   guarantorPhone: z.string().min(1, "Guarantor phone is required"),
   monthlyRent: z.number().positive("Monthly rent must be positive"),
@@ -17,20 +21,28 @@ const rentSchema = z.object({
 
 export async function GET() {
   try {
-    const rents = await prisma.rent.findMany({
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-        tenant: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
+    await connectDB();
+    const rents = await Rent.find({}).sort({ createdAt: -1 }).lean();
+
+    // Return normalized data (only IDs, no populated objects)
+    const normalizedRents = rents.map((rent) => ({
+      ...rent,
+      id: rent._id.toString(),
+      roomId: rent.roomId.toString(),
+      tenantId: rent.tenantId.toString(),
+      startDate: rent.startDate ? rent.startDate.toISOString() : null,
+      endDate: rent.endDate ? rent.endDate.toISOString() : null,
+      createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: rent.updatedAt ? rent.updatedAt.toISOString() : new Date().toISOString(),
+    }));
+
+    return NextResponse.json(normalizedRents, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
-    return NextResponse.json(rents);
   } catch (error) {
     console.error("Error fetching rents:", error);
     return NextResponse.json(
@@ -45,23 +57,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = rentSchema.parse(body);
 
-    const rent = await prisma.rent.create({
-      data: {
-        ...validated,
-        startDate: new Date(validated.startDate),
-        endDate: new Date(validated.endDate),
-      },
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-        tenant: true,
-      },
+    await connectDB();
+
+    const rent = new Rent({
+      roomId: validated.roomId,
+      tenantId: validated.tenantId,
+      guarantorName: validated.guarantorName,
+      guarantorPhone: validated.guarantorPhone,
+      monthlyRent: validated.monthlyRent,
+      months: validated.months,
+      totalRent: validated.totalRent,
+      startDate: new Date(validated.startDate),
+      endDate: new Date(validated.endDate),
+      contract: validated.contract || null,
     });
 
-    return NextResponse.json(rent, { status: 201 });
+    const savedRent = await rent.save();
+
+    // Return normalized data
+    return NextResponse.json(
+      {
+        ...savedRent.toJSON(),
+        id: savedRent._id.toString(),
+        roomId: savedRent.roomId.toString(),
+        tenantId: savedRent.tenantId.toString(),
+        startDate: savedRent.startDate ? savedRent.startDate.toISOString() : null,
+        endDate: savedRent.endDate ? savedRent.endDate.toISOString() : null,
+        createdAt: savedRent.createdAt ? savedRent.createdAt.toISOString() : new Date().toISOString(),
+        updatedAt: savedRent.updatedAt ? savedRent.updatedAt.toISOString() : new Date().toISOString(),
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

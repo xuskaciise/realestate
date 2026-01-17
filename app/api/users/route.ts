@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import User from "@/lib/models/User";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
@@ -14,23 +15,12 @@ const userSchema = z.object({
 
 export async function GET() {
   try {
-    const users = await prisma.user.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
-      select: {
-        id: true,
-        fullname: true,
-        username: true,
-        type: true,
-        status: true,
-        profile: true,
-        createdAt: true,
-        updatedAt: true,
-        // Don't return password
-      },
-    });
-    return NextResponse.json(users);
+    await connectDB();
+    const users = await User.find({})
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .lean();
+    return NextResponse.json(users.map(u => ({ ...u, id: u._id.toString() })));
   } catch (error) {
     console.error("Error fetching users:", error);
     return NextResponse.json(
@@ -45,10 +35,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = userSchema.parse(body);
 
+    await connectDB();
+
     // Check if username already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { username: validated.username },
-    });
+    const existingUser = await User.findOne({ username: validated.username });
 
     if (existingUser) {
       return NextResponse.json(
@@ -60,28 +50,20 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(validated.password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        fullname: validated.fullname,
-        username: validated.username,
-        password: hashedPassword,
-        type: validated.type,
-        status: validated.status,
-        profile: validated.profile || null,
-      },
-      select: {
-        id: true,
-        fullname: true,
-        username: true,
-        type: true,
-        status: true,
-        profile: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const user = new User({
+      fullname: validated.fullname,
+      username: validated.username,
+      password: hashedPassword,
+      type: validated.type,
+      status: validated.status,
+      profile: validated.profile || null,
     });
 
-    return NextResponse.json(user, { status: 201 });
+    const savedUser = await user.save();
+    const userJson = savedUser.toJSON();
+    delete userJson.password;
+
+    return NextResponse.json(userJson, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

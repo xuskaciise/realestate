@@ -228,11 +228,12 @@ export default function PaymentsPage() {
     if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
       const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
       if (selectedService) {
-        // Auto-fill paid amount with monthly service total amount
-        setPaymentForm((prev) => ({ ...prev, paidAmount: selectedService.totalAmount }));
+        // Auto-fill paid amount with monthly rent + monthly service total amount
+        const totalAmount = paymentForm.monthlyRent + selectedService.totalAmount;
+        setPaymentForm((prev) => ({ ...prev, paidAmount: totalAmount }));
       }
     }
-  }, [paymentForm.monthlyServiceId, monthlyServices]);
+  }, [paymentForm.monthlyServiceId, paymentForm.monthlyRent, monthlyServices]);
 
   const fetchPayments = async () => {
     try {

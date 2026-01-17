@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import House from "@/lib/models/House";
+import Room from "@/lib/models/Room";
 import { z } from "zod";
 
 const houseSchema = z.object({
@@ -10,15 +12,32 @@ const houseSchema = z.object({
 
 export async function GET() {
   try {
-    const houses = await prisma.house.findMany({
-      include: {
-        rooms: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
+    await connectDB();
+    
+    const houses = await House.find({}).sort({ createdAt: -1 }).lean();
+
+    // Populate rooms for each house
+    const housesWithRooms = await Promise.all(
+      houses.map(async (house) => {
+        const rooms = await Room.find({ houseId: house._id.toString() }).lean();
+        return {
+          ...house,
+          rooms: rooms.map((room) => ({
+            ...room,
+            id: room._id.toString(),
+          })),
+          id: house._id.toString(),
+        };
+      })
+    );
+
+    return NextResponse.json(housesWithRooms, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
-    return NextResponse.json(houses);
   } catch (error) {
     console.error("Error fetching houses:", error);
     return NextResponse.json(
@@ -33,14 +52,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = houseSchema.parse(body);
 
-    const house = await prisma.house.create({
-      data: validated,
-      include: {
-        rooms: true,
-      },
+    await connectDB();
+
+    const house = new House({
+      name: validated.name,
+      address: validated.address,
+      description: validated.description || null,
     });
 
-    return NextResponse.json(house, { status: 201 });
+    const savedHouse = await house.save();
+
+    return NextResponse.json(
+      {
+        ...savedHouse.toJSON(),
+        rooms: [],
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

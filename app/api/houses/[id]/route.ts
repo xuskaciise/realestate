@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import House from "@/lib/models/House";
+import Room from "@/lib/models/Room";
 import { z } from "zod";
 
 const houseSchema = z.object({
@@ -13,12 +15,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const house = await prisma.house.findUnique({
-      where: { id: params.id },
-      include: {
-        rooms: true,
-      },
-    });
+    await connectDB();
+
+    const house = await House.findById(params.id).lean();
 
     if (!house) {
       return NextResponse.json(
@@ -27,7 +26,16 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(house);
+    const rooms = await Room.find({ houseId: params.id }).lean();
+
+    return NextResponse.json({
+      ...house,
+      rooms: rooms.map((room) => ({
+        ...room,
+        id: room._id.toString(),
+      })),
+      id: house._id.toString(),
+    });
   } catch (error) {
     console.error("Error fetching house:", error);
     return NextResponse.json(
@@ -45,15 +53,34 @@ export async function PUT(
     const body = await request.json();
     const validated = houseSchema.parse(body);
 
-    const house = await prisma.house.update({
-      where: { id: params.id },
-      data: validated,
-      include: {
-        rooms: true,
-      },
-    });
+    await connectDB();
 
-    return NextResponse.json(house);
+    const house = await House.findByIdAndUpdate(
+      params.id,
+      {
+        ...validated,
+        description: validated.description || null,
+      },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!house) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      );
+    }
+
+    const rooms = await Room.find({ houseId: params.id }).lean();
+
+    return NextResponse.json({
+      ...house,
+      rooms: rooms.map((room) => ({
+        ...room,
+        id: room._id.toString(),
+      })),
+      id: house._id.toString(),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -74,9 +101,20 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.house.delete({
-      where: { id: params.id },
-    });
+    await connectDB();
+
+    // Delete associated rooms first
+    await Room.deleteMany({ houseId: params.id });
+
+    // Delete the house
+    const house = await House.findByIdAndDelete(params.id);
+
+    if (!house) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ message: "House deleted successfully" });
   } catch (error) {

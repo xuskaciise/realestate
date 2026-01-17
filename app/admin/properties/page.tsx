@@ -43,7 +43,7 @@ const houseSchema = z.object({
 const roomSchema = z.object({
   name: z.string().min(1, "Name is required"),
   monthlyRent: z.number().positive("Monthly rent must be positive"),
-  houseId: z.string().uuid("House must be selected"),
+  houseId: z.string().min(1, "House must be selected"),
   status: z.enum(["available", "rented"]).default("available"),
 });
 
@@ -100,13 +100,23 @@ export default function PropertiesPage() {
   const fetchHouses = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/houses");
+      const response = await fetch("/api/houses", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (response.ok) {
         const data = await response.json();
-        setHouses(data);
+        setHouses(data || []);
+      } else {
+        setHouses([]);
       }
     } catch (error) {
       console.error("Error fetching houses:", error);
+      setHouses([]);
     } finally {
       setLoading(false);
     }
@@ -126,59 +136,52 @@ export default function PropertiesPage() {
       let createdHouseId: string | null = null;
       
       if (editingHouse) {
-        const updatedHouses = houses.map((h) =>
-          h.id === editingHouse.id
-            ? {
-                ...h,
-                ...validated,
-                updatedAt: new Date().toISOString(),
-              }
-            : h
-        );
-        setHouses(updatedHouses);
-        
         try {
-          await fetch(`/api/houses/${editingHouse.id}`, {
+          const response = await fetch(`/api/houses/${editingHouse.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchHouses();
+          } else {
+            throw new Error("Failed to update house");
+          }
         } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
+          console.error("Error updating house:", error);
+          alert("Failed to update house. Please try again.");
+          return;
         }
         
         setHouseForm({ name: "", address: "", description: "" });
         setEditingHouse(null);
         setOpenHouseModal(false);
       } else {
-        const newHouse: House = {
-          id: uuidv4(),
-          ...validated,
-          description: validated.description ?? null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          rooms: [],
-        };
-        
-        createdHouseId = newHouse.id;
-        const updatedHouses = [...houses, newHouse];
-        setHouses(updatedHouses);
-        
         try {
-          await fetch("/api/houses", {
+          const response = await fetch("/api/houses", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            const newHouse = await response.json();
+            createdHouseId = newHouse.id;
+            await fetchHouses();
+            setShowAddRoomForHouse(createdHouseId);
+          } else {
+            throw new Error("Failed to create house");
+          }
         } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
+          console.error("Error creating house:", error);
+          alert("Failed to create house. Please try again.");
+          return;
         }
 
         setHouseForm({ name: "", address: "", description: "" });
         setEditingHouse(null);
         setOpenHouseModal(false);
-
-        setShowAddRoomForHouse(createdHouseId);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -205,57 +208,43 @@ export default function PropertiesPage() {
       });
 
       if (editingRoom) {
-        const updatedHouses = houses.map((house) => ({
-          ...house,
-          rooms: house.rooms.map((r) =>
-            r.id === editingRoom.id
-              ? {
-                  ...r,
-                  name: validated.name,
-                  monthlyRent: validated.monthlyRent,
-                  status: validated.status,
-                  updatedAt: new Date().toISOString(),
-                }
-              : r
-          ),
-        }));
-        setHouses(updatedHouses);
-        
         try {
-          await fetch(`/api/rooms/${editingRoom.id}`, {
+          const response = await fetch(`/api/rooms/${editingRoom.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchHouses();
+          } else {
+            throw new Error("Failed to update room");
+          }
         } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
+          console.error("Error updating room:", error);
+          alert("Failed to update room. Please try again.");
+          return;
         }
       } else {
-        const newRoom: Room = {
-          id: uuidv4(),
-          name: validated.name,
-          monthlyRent: validated.monthlyRent,
-          houseId: validated.houseId,
-          status: validated.status,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const updatedHouses = houses.map((house) =>
-          house.id === validated.houseId
-            ? { ...house, rooms: [...house.rooms, newRoom] }
-            : house
-        );
-        setHouses(updatedHouses);
-        
         try {
-          await fetch("/api/rooms", {
+          const response = await fetch("/api/rooms", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchHouses();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || errorData.details || "Failed to create room";
+            throw new Error(errorMessage);
+          }
         } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
+          console.error("Error creating room:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to create room. Please try again.";
+          alert(errorMessage);
+          return;
         }
       }
 
@@ -280,33 +269,38 @@ export default function PropertiesPage() {
   const handleDeleteHouse = async (id: string) => {
     if (!confirm("Are you sure you want to delete this house?")) return;
 
-    const updatedHouses = houses.filter((h) => h.id !== id);
-    setHouses(updatedHouses);
-    
     try {
-      await fetch(`/api/houses/${id}`, {
+      const response = await fetch(`/api/houses/${id}`, {
         method: "DELETE",
       });
+      
+      if (response.ok) {
+        await fetchHouses();
+      } else {
+        throw new Error("Failed to delete house");
+      }
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("Error deleting house:", error);
+      alert("Failed to delete house. Please try again.");
     }
   };
 
   const handleDeleteRoom = async (id: string) => {
     if (!confirm("Are you sure you want to delete this room?")) return;
 
-    const updatedHouses = houses.map((house) => ({
-      ...house,
-      rooms: house.rooms.filter((r) => r.id !== id),
-    }));
-    setHouses(updatedHouses);
-    
     try {
-      await fetch(`/api/rooms/${id}`, {
+      const response = await fetch(`/api/rooms/${id}`, {
         method: "DELETE",
       });
+      
+      if (response.ok) {
+        await fetchHouses();
+      } else {
+        throw new Error("Failed to delete room");
+      }
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("Error deleting room:", error);
+      alert("Failed to delete room. Please try again.");
     }
   };
 
@@ -389,8 +383,9 @@ export default function PropertiesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
+      <div className="flex flex-col items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-muted-foreground font-medium">Loading properties...</p>
       </div>
     );
   }
@@ -398,30 +393,32 @@ export default function PropertiesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Properties</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+            Properties
+          </h1>
+          <p className="text-muted-foreground mt-2 text-lg">
             Manage houses and rooms
           </p>
         </div>
         <Button 
           onClick={openHouseForm}
-          className="bg-primary hover:bg-primary/90"
+          className="gradient-primary hover:opacity-90 text-white shadow-medium px-6 py-6 text-base font-semibold rounded-lg transition-all hover:scale-105"
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-2 h-5 w-5" />
           Add House
         </Button>
       </div>
 
       {/* House Modal */}
       <Dialog open={openHouseModal} onOpenChange={setOpenHouseModal}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
+        <DialogContent className="sm:max-w-[500px] shadow-xl border-2">
+          <DialogHeader className="pb-4 border-b">
+            <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
               {editingHouse ? "Edit House" : "Add New House"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-base mt-2">
               {editingHouse
                 ? "Update house information"
                 : "Create a new house with name, address, and description"}
@@ -429,8 +426,8 @@ export default function PropertiesPage() {
           </DialogHeader>
           <form onSubmit={handleHouseSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="house-name">
-                Name <span className="text-destructive">*</span>
+              <Label htmlFor="house-name" className="text-sm font-semibold text-gray-700">
+                Name <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="house-name"
@@ -441,7 +438,8 @@ export default function PropertiesPage() {
                     setHouseErrors({ ...houseErrors, name: "" });
                   }
                 }}
-                className={houseErrors.name ? "border-destructive" : ""}
+                className={`${houseErrors.name ? "border-red-500 border-2" : "border-gray-300 focus:border-blue-500"} transition-colors`}
+                placeholder="Enter house name"
               />
               {houseErrors.name && (
                 <p className="text-sm text-destructive font-medium">{houseErrors.name}</p>
@@ -449,8 +447,8 @@ export default function PropertiesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="house-address">
-                Address <span className="text-destructive">*</span>
+              <Label htmlFor="house-address" className="text-sm font-semibold text-gray-700">
+                Address <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="house-address"
@@ -461,7 +459,8 @@ export default function PropertiesPage() {
                     setHouseErrors({ ...houseErrors, address: "" });
                   }
                 }}
-                className={houseErrors.address ? "border-destructive" : ""}
+                className={`${houseErrors.address ? "border-red-500 border-2" : "border-gray-300 focus:border-blue-500"} transition-colors`}
+                placeholder="Enter house address"
               />
               {houseErrors.address && (
                 <p className="text-sm text-destructive font-medium">{houseErrors.address}</p>
@@ -480,7 +479,7 @@ export default function PropertiesPage() {
               />
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-3 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
@@ -489,10 +488,14 @@ export default function PropertiesPage() {
                   setEditingHouse(null);
                   setHouseForm({ name: "", address: "", description: "" });
                 }}
+                className="px-6 font-semibold border-2 hover:bg-gray-50"
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button 
+                type="submit"
+                className="gradient-primary hover:opacity-90 text-white shadow-medium px-6 font-semibold"
+              >
                 {editingHouse ? "Update House" : "Create House"}
               </Button>
             </DialogFooter>
@@ -502,12 +505,12 @@ export default function PropertiesPage() {
 
       {/* Room Modal */}
       <Dialog open={openRoomModal} onOpenChange={setOpenRoomModal}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
+        <DialogContent className="sm:max-w-[500px] shadow-xl border-2">
+          <DialogHeader className="pb-4 border-b">
+            <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-800 bg-clip-text text-transparent">
               {editingRoom ? "Edit Room" : "Add New Room"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-base mt-2">
               {editingRoom
                 ? "Update room information"
                 : "Add a room to a house with name and monthly rent"}
@@ -515,13 +518,13 @@ export default function PropertiesPage() {
           </DialogHeader>
           <form onSubmit={handleRoomSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="room-house">
-                House <span className="text-destructive">*</span>
+              <Label htmlFor="room-house" className="text-sm font-semibold text-gray-700">
+                House <span className="text-red-500">*</span>
               </Label>
               <select
                 id="room-house"
-                className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  roomErrors.houseId ? "border-destructive" : "border-input"
+                className={`flex h-11 w-full rounded-lg border-2 bg-background px-4 py-2 text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors ${
+                  roomErrors.houseId ? "border-red-500" : "border-gray-300 focus:border-blue-500"
                 }`}
                 value={selectedHouseId || roomForm.houseId}
                 onChange={(e) => {
@@ -546,8 +549,8 @@ export default function PropertiesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="room-name">
-                Room Number <span className="text-destructive">*</span>
+              <Label htmlFor="room-name" className="text-sm font-semibold text-gray-700">
+                Room Number <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="room-name"
@@ -559,7 +562,7 @@ export default function PropertiesPage() {
                   }
                 }}
                 placeholder="e.g., 101, 102"
-                className={roomErrors.name ? "border-destructive" : ""}
+                className={`${roomErrors.name ? "border-red-500 border-2" : "border-gray-300 focus:border-blue-500"} transition-colors`}
               />
               {roomErrors.name && (
                 <p className="text-sm text-destructive font-medium">{roomErrors.name}</p>
@@ -567,8 +570,8 @@ export default function PropertiesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="room-rent">
-                Monthly Rent <span className="text-destructive">*</span>
+              <Label htmlFor="room-rent" className="text-sm font-semibold text-gray-700">
+                Monthly Rent <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="room-rent"
@@ -583,7 +586,8 @@ export default function PropertiesPage() {
                     setRoomErrors({ ...roomErrors, monthlyRent: "" });
                   }
                 }}
-                className={roomErrors.monthlyRent ? "border-destructive" : ""}
+                placeholder="0.00"
+                className={`${roomErrors.monthlyRent ? "border-red-500 border-2" : "border-gray-300 focus:border-blue-500"} transition-colors`}
               />
               {roomErrors.monthlyRent && (
                 <p className="text-sm text-destructive font-medium">{roomErrors.monthlyRent}</p>
@@ -591,10 +595,10 @@ export default function PropertiesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="room-status">Status</Label>
+              <Label htmlFor="room-status" className="text-sm font-semibold text-gray-700">Status</Label>
               <select
                 id="room-status"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-11 w-full rounded-lg border-2 border-gray-300 focus:border-blue-500 bg-background px-4 py-2 text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
                 value={roomForm.status}
                 onChange={(e) =>
                   setRoomForm({
@@ -608,7 +612,7 @@ export default function PropertiesPage() {
               </select>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-3 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
@@ -619,10 +623,14 @@ export default function PropertiesPage() {
                   setSelectedHouseId("");
                   setShowAddRoomForHouse(null);
                 }}
+                className="px-6 font-semibold border-2 hover:bg-gray-50"
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button 
+                type="submit"
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-medium px-6 font-semibold"
+              >
                 {editingRoom ? "Update Room" : "Create Room"}
               </Button>
             </DialogFooter>
@@ -632,10 +640,20 @@ export default function PropertiesPage() {
 
       {/* Houses Cards */}
       {houses.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Building2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No houses added yet.</p>
+        <Card className="shadow-soft border-2 border-dashed border-gray-300">
+          <CardContent className="py-16 text-center">
+            <div className="mx-auto w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
+              <Building2 className="h-10 w-10 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">No houses added yet</h3>
+            <p className="text-muted-foreground mb-6">Get started by adding your first property</p>
+            <Button 
+              onClick={openHouseForm}
+              className="gradient-primary hover:opacity-90 text-white shadow-medium px-6 py-6 text-base font-semibold rounded-lg transition-all hover:scale-105"
+            >
+              <Plus className="mr-2 h-5 w-5" />
+              Add Your First House
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -646,23 +664,28 @@ export default function PropertiesPage() {
             return (
               <Card
                 key={house.id}
-                className={isNewlyCreated ? "border-l-4 border-l-primary" : ""}
+                className={`shadow-soft hover:shadow-medium transition-all duration-300 border-2 ${
+                  isNewlyCreated ? "border-l-4 border-l-blue-500 shadow-blue-100" : "border-gray-100"
+                }`}
               >
-                <CardHeader>
+                <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg border-b">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-2xl mb-1">{house.name}</CardTitle>
-                      <CardDescription className="text-base">{house.name}</CardDescription>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {house.rooms.length} {house.rooms.length === 1 ? "room" : "rooms"}
-                      </p>
+                      <CardTitle className="text-2xl mb-2 font-bold text-gray-900">{house.name}</CardTitle>
+                      <CardDescription className="text-base text-gray-600 font-medium">{house.address}</CardDescription>
+                      <div className="flex items-center gap-2 mt-3">
+                        <Building2 className="h-4 w-4 text-blue-600" />
+                        <p className="text-sm font-semibold text-blue-700">
+                          {house.rooms.length} {house.rooms.length === 1 ? "room" : "rooms"}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button
                         variant="default"
                         size="icon"
                         onClick={() => handleEditHouse(house)}
-                        className="bg-primary hover:bg-primary/90"
+                        className="gradient-primary hover:opacity-90 text-white shadow-sm hover:shadow-md transition-all"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -670,6 +693,7 @@ export default function PropertiesPage() {
                         variant="destructive"
                         size="icon"
                         onClick={() => handleDeleteHouse(house.id)}
+                        className="gradient-danger hover:opacity-90 text-white shadow-sm hover:shadow-md transition-all"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -678,13 +702,13 @@ export default function PropertiesPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-lg">Rooms</h3>
+                    <div className="flex items-center justify-between py-2">
+                      <h3 className="font-bold text-xl text-gray-800">Rooms</h3>
                       <Button
                         variant="default"
                         size="sm"
                         onClick={() => openRoomForm(house.id)}
-                        className="bg-gray-500 hover:bg-gray-600 text-white"
+                        className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-sm hover:shadow-md transition-all font-semibold"
                       >
                         <Plus className="mr-2 h-4 w-4" />
                         Add Room
@@ -692,39 +716,46 @@ export default function PropertiesPage() {
                     </div>
 
                     {house.rooms.length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-4">
-                        No rooms added yet.
-                      </p>
+                      <div className="py-8 text-center border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                        <Home className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                        <p className="text-sm font-medium text-gray-500">
+                          No rooms added yet.
+                        </p>
+                      </div>
                     ) : (
                       <>
                         <Table>
                           <TableHeader>
-                            <TableRow>
-                              <TableHead>ROOM NUMBER</TableHead>
-                              <TableHead>MONTHLY RATE</TableHead>
-                              <TableHead>STATUS</TableHead>
-                              <TableHead className="text-right">ACTIONS</TableHead>
+                            <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
+                              <TableHead className="font-bold text-gray-700">ROOM NUMBER</TableHead>
+                              <TableHead className="font-bold text-gray-700">MONTHLY RATE</TableHead>
+                              <TableHead className="font-bold text-gray-700">STATUS</TableHead>
+                              <TableHead className="text-right font-bold text-gray-700">ACTIONS</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {getPaginatedRooms(house.rooms, house.id).map((room) => (
-                            <TableRow key={room.id}>
+                            <TableRow key={room.id} className="hover:bg-blue-50/50 transition-colors">
                               <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Home className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">{room.name}</span>
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-100 rounded-lg">
+                                    <Home className="h-4 w-4 text-blue-600" />
+                                  </div>
+                                  <span className="font-semibold text-gray-900">{room.name}</span>
                                 </div>
                               </TableCell>
-                              <TableCell className="font-semibold">
-                                ${room.monthlyRent.toLocaleString()}
+                              <TableCell>
+                                <span className="font-bold text-lg text-green-600">
+                                  ${room.monthlyRent.toLocaleString()}
+                                </span>
                               </TableCell>
                               <TableCell>
                                 <Badge
                                   variant={
-                                    room.status === "rented" ? "success" : "secondary"
+                                    room.status === "rented" ? "success" : "default"
                                   }
                                 >
-                                  {room.status === "rented" ? "rented" : "available"}
+                                  {room.status === "rented" ? "Rented" : "Available"}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
@@ -733,7 +764,7 @@ export default function PropertiesPage() {
                                     variant="default"
                                     size="icon"
                                     onClick={() => handleEditRoom(room)}
-                                    className="bg-primary hover:bg-primary/90 h-8 w-8"
+                                    className="gradient-primary hover:opacity-90 text-white shadow-sm hover:shadow-md transition-all h-9 w-9"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
@@ -741,7 +772,7 @@ export default function PropertiesPage() {
                                     variant="destructive"
                                     size="icon"
                                     onClick={() => handleDeleteRoom(room.id)}
-                                    className="h-8 w-8"
+                                    className="gradient-danger hover:opacity-90 text-white shadow-sm hover:shadow-md transition-all h-9 w-9"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -796,7 +827,7 @@ export default function PropertiesPage() {
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-8 w-8"
+                                  className="h-9 w-9 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
                                   onClick={() => {
                                     const current = roomsCurrentPage[house.id] || 1;
                                     if (current > 1) {
@@ -810,7 +841,7 @@ export default function PropertiesPage() {
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-8 w-8"
+                                  className="h-9 w-9 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
                                   onClick={() => {
                                     const current = roomsCurrentPage[house.id] || 1;
                                     const total = getRoomsTotalPages(house.rooms.length, house.id);
@@ -882,7 +913,7 @@ export default function PropertiesPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-9 w-9 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
                     onClick={() => {
                       if (currentPage > 1) {
                         handleHousesPageChange(currentPage - 1);
@@ -895,7 +926,7 @@ export default function PropertiesPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-9 w-9 border-2 hover:bg-blue-50 hover:border-blue-300 transition-all"
                     onClick={() => {
                       if (currentPage < housesTotalPages) {
                         handleHousesPageChange(currentPage + 1);

@@ -25,7 +25,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { v4 as uuidv4 } from "uuid";
 import { User, Plus, Trash2, Edit, Upload, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import {
@@ -74,13 +73,23 @@ export default function TenantsPage() {
   const fetchTenants = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/tenants");
+      const response = await fetch("/api/tenants", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (response.ok) {
         const data = await response.json();
-        setTenants(data);
+        setTenants(data || []);
+      } else {
+        setTenants([]);
       }
     } catch (error) {
       console.error("Error fetching tenants:", error);
+      setTenants([]);
     } finally {
       setLoading(false);
     }
@@ -141,25 +150,24 @@ export default function TenantsPage() {
       const validated = tenantSchema.parse(tenantForm);
 
       if (editingTenant) {
-        const updatedTenants = tenants.map((t) =>
-          t.id === editingTenant.id
-            ? {
-                ...t,
-                ...validated,
-                updatedAt: new Date().toISOString(),
-              }
-            : t
-        );
-        setTenants(updatedTenants);
-
         try {
-          await fetch(`/api/tenants/${editingTenant.id}`, {
+          const response = await fetch(`/api/tenants/${editingTenant.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchTenants();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to update tenant");
+          }
         } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
+          console.error("Error updating tenant:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to update tenant. Please try again.";
+          alert(errorMessage);
+          return;
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
@@ -167,25 +175,24 @@ export default function TenantsPage() {
         setOpenTenantModal(false);
         setPreviewImage(null);
       } else {
-        const newTenant: Tenant = {
-          id: uuidv4(),
-          ...validated,
-          profile: validated.profile || null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const updatedTenants = [...tenants, newTenant];
-        setTenants(updatedTenants);
-
         try {
-          await fetch("/api/tenants", {
+          const response = await fetch("/api/tenants", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchTenants();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to create tenant");
+          }
         } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
+          console.error("Error creating tenant:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to create tenant. Please try again.";
+          alert(errorMessage);
+          return;
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
@@ -208,15 +215,19 @@ export default function TenantsPage() {
   const handleDeleteTenant = async (id: string) => {
     if (!confirm("Are you sure you want to delete this tenant?")) return;
 
-    const updatedTenants = tenants.filter((t) => t.id !== id);
-    setTenants(updatedTenants);
-
     try {
-      await fetch(`/api/tenants/${id}`, {
+      const response = await fetch(`/api/tenants/${id}`, {
         method: "DELETE",
       });
+      
+      if (response.ok) {
+        await fetchTenants();
+      } else {
+        throw new Error("Failed to delete tenant");
+      }
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("Error deleting tenant:", error);
+      alert("Failed to delete tenant. Please try again.");
     }
   };
 

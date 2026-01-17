@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Tenant from "@/lib/models/Tenant";
 import { z } from "zod";
 
 const tenantSchema = z.object({
@@ -14,9 +15,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: params.id },
-    });
+    await connectDB();
+    const tenant = await Tenant.findById(params.id).lean();
 
     if (!tenant) {
       return NextResponse.json(
@@ -25,7 +25,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(tenant);
+    return NextResponse.json({
+      ...tenant,
+      id: tenant._id.toString(),
+    });
   } catch (error) {
     console.error("Error fetching tenant:", error);
     return NextResponse.json(
@@ -43,12 +46,30 @@ export async function PUT(
     const body = await request.json();
     const validated = tenantSchema.parse(body);
 
-    const tenant = await prisma.tenant.update({
-      where: { id: params.id },
-      data: validated,
-    });
+    await connectDB();
 
-    return NextResponse.json(tenant);
+    const tenant = await Tenant.findByIdAndUpdate(
+      params.id,
+      {
+        name: validated.name,
+        phone: validated.phone,
+        address: validated.address,
+        profile: validated.profile || null,
+      },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!tenant) {
+      return NextResponse.json(
+        { error: "Tenant not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      ...tenant,
+      id: tenant._id.toString(),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -69,9 +90,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.tenant.delete({
-      where: { id: params.id },
-    });
+    await connectDB();
+    const tenant = await Tenant.findByIdAndDelete(params.id);
+
+    if (!tenant) {
+      return NextResponse.json(
+        { error: "Tenant not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ message: "Tenant deleted successfully" });
   } catch (error) {

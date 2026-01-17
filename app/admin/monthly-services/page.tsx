@@ -24,7 +24,6 @@ import {
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { v4 as uuidv4 } from "uuid";
 import { Droplet, Zap, Trash2, Wrench, Plus, Edit, X, CreditCard, Printer } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
@@ -91,13 +90,16 @@ export default function MonthlyServicesPage() {
   const router = useRouter();
   const [services, setServices] = useState<MonthlyService[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [rents, setRents] = useState<Array<{ id: string; roomId: string; tenantId: string; startDate: string; endDate: string; tenant?: { id: string; name: string; phone: string } }>>([]);
+  const [rents, setRents] = useState<Array<{ id: string; roomId: string; tenantId: string; monthlyRent: number; startDate: string; endDate: string; tenant?: { id: string; name: string; phone: string } }>>([]);
   const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number }>>([]);
+  const [tenants, setTenants] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [openServiceModal, setOpenServiceModal] = useState(false);
   const [editingService, setEditingService] = useState<MonthlyService | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
+  const [openPaymentModal, setOpenPaymentModal] = useState(false);
+  const [paymentService, setPaymentService] = useState<MonthlyService | null>(null);
 
   const [serviceForm, setServiceForm] = useState({
     roomId: "",
@@ -118,17 +120,170 @@ export default function MonthlyServicesPage() {
 
   const [serviceErrors, setServiceErrors] = useState<Record<string, string>>({});
 
+  const [paymentForm, setPaymentForm] = useState({
+    tenantId: "",
+    monthlyRent: 0, // Keep for API compatibility but set to 0
+    paidAmount: 0,
+    balance: 0,
+    status: "Pending" as "Paid" | "Partial" | "Pending" | "Overdue",
+    paymentDate: dayjs().format("YYYY-MM-DD"),
+    monthlyServiceId: "",
+    notes: "",
+  });
+
+  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
+
+  const paymentSchema = z.object({
+    tenantId: z.string().min(1, "Tenant must be selected"),
+    monthlyRent: z.number().min(0), // Keep for API but can be 0
+    paidAmount: z.number().min(0, "Paid amount must be non-negative"),
+    balance: z.number(),
+    status: z.enum(["Paid", "Partial", "Pending", "Overdue"]),
+    paymentDate: z.string().min(1, "Payment date is required"),
+    monthlyServiceId: z.string().optional(),
+    notes: z.string().optional(),
+  });
+
   const fetchRents = useCallback(async () => {
     try {
-      const response = await fetch("/api/rents");
+      const response = await fetch("/api/rents", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (response.ok) {
         const data = await response.json();
-        setRents(data);
+        setRents(data || []);
+      } else {
+        setRents([]);
       }
     } catch (error) {
       console.error("Error fetching rents:", error);
+      setRents([]);
     }
   }, []);
+
+  const filterRentedRooms = useCallback(async (allRooms: Room[]) => {
+    try {
+      const response = await fetch("/api/rents", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const rents = await response.json();
+        const today = dayjs();
+        const activeRentRoomIds = new Set(
+          rents
+            .filter(
+              (rent: { roomId: string; startDate: string; endDate: string }) =>
+                rent.roomId &&
+                (today.isAfter(dayjs(rent.startDate)) || today.isSame(dayjs(rent.startDate), "day")) &&
+                (today.isBefore(dayjs(rent.endDate)) || today.isSame(dayjs(rent.endDate), "day"))
+            )
+            .map((rent: { roomId: string }) => rent.roomId)
+        );
+        return allRooms.filter((room) => activeRentRoomIds.has(room.id));
+      }
+      return allRooms;
+    } catch (error) {
+      console.error("Error filtering rented rooms:", error);
+      return allRooms;
+    }
+  }, []);
+
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.length > 0) {
+          // Filter only rooms that are currently rented
+          const rentedRooms = await filterRentedRooms(data);
+          setRooms(rentedRooms.length > 0 ? rentedRooms : data);
+        } else {
+          setRooms([]);
+        }
+      } else {
+        setRooms([]);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+      setRooms([]);
+    }
+  }, [filterRentedRooms]);
+
+  const fetchServices = useCallback(async () => {
+    try {
+      const response = await fetch("/api/monthly-services", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setServices(data || []);
+      } else {
+        setServices([]);
+      }
+    } catch (error) {
+      console.error("Error fetching services:", error);
+      setServices([]);
+    }
+  }, []);
+
+  const fetchTenants = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tenants", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTenants(data || []);
+      } else {
+        setTenants([]);
+      }
+    } catch (error) {
+      console.error("Error fetching tenants:", error);
+      setTenants([]);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      // First fetch rooms, then services (so services can use room data)
+      await Promise.all([
+        fetchRooms(),
+        fetchServices(),
+        fetchRents(),
+        fetchTenants(),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchRooms, fetchServices, fetchRents, fetchTenants]);
 
   useEffect(() => {
     loadData();
@@ -185,70 +340,6 @@ export default function MonthlyServicesPage() {
     calculateTotal();
   }, [calculateTotal]);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      // First fetch rooms, then services (so services can use room data)
-      await fetchRooms();
-      await fetchServices();
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchRooms]);
-
-  const fetchServices = async () => {
-    try {
-      const response = await fetch("/api/monthly-services");
-      if (response.ok) {
-        const data = await response.json();
-        setServices(data);
-      }
-    } catch (error) {
-      console.error("Error fetching services:", error);
-    }
-  };
-
-  const filterRentedRooms = useCallback(async (allRooms: Room[]) => {
-    try {
-      const response = await fetch("/api/rents");
-      if (response.ok) {
-        const rents = await response.json();
-        const today = dayjs();
-        const activeRentRoomIds = new Set(
-          rents
-            .filter(
-              (rent) =>
-                rent.roomId &&
-                (today.isAfter(dayjs(rent.startDate)) || today.isSame(dayjs(rent.startDate), "day")) &&
-                (today.isBefore(dayjs(rent.endDate)) || today.isSame(dayjs(rent.endDate), "day"))
-            )
-            .map((rent) => rent.roomId)
-        );
-        return allRooms.filter((room) => activeRentRoomIds.has(room.id));
-      }
-      return allRooms;
-    } catch (error) {
-      console.error("Error filtering rented rooms:", error);
-      return allRooms;
-    }
-  }, []);
-
-  const fetchRooms = useCallback(async () => {
-    try {
-      const response = await fetch("/api/rooms");
-      if (response.ok) {
-        const data = await response.json();
-        if (data.length > 0) {
-          // Filter only rooms that are currently rented
-          const rentedRooms = await filterRentedRooms(data);
-          setRooms(rentedRooms.length > 0 ? rentedRooms : data);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching rooms:", error);
-    }
-  }, [filterRentedRooms]);
-
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setServiceErrors({});
@@ -292,44 +383,36 @@ export default function MonthlyServicesPage() {
       const validated = monthlyServiceSchema.parse(formData);
 
       if (editingService) {
-        const updatedServices = services.map((s) =>
-          s.id === editingService.id
-            ? {
-                ...s,
-                ...validated,
-                waterPrevious: validated.waterPrevious ?? null,
-                waterCurrent: validated.waterCurrent ?? null,
-                waterPricePerUnit: validated.waterPricePerUnit ?? null,
-                waterTotal: validated.waterTotal ?? null,
-                electricityPrevious: validated.electricityPrevious ?? null,
-                electricityCurrent: validated.electricityCurrent ?? null,
-                electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
-                electricityTotal: validated.electricityTotal ?? null,
-                trashFee: validated.trashFee ?? null,
-                maintenanceFee: validated.maintenanceFee ?? null,
-                notes: validated.notes ?? null,
-                updatedAt: new Date().toISOString(),
-              }
-            : s
-        );
-        setServices(updatedServices);
-
         try {
-          await fetch(`/api/monthly-services/${editingService.id}`, {
+          const response = await fetch(`/api/monthly-services/${editingService.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
-
-          // Update tenant balance if total amount changed
-          const oldTotal = editingService.totalAmount;
-          const newTotal = validated.totalAmount;
-          const difference = newTotal - oldTotal;
-          if (difference !== 0) {
-            await addToTenantBalance(validated.roomId, difference);
+          
+          if (response.ok) {
+            // Update tenant balance if total amount changed
+            const oldTotal = editingService.totalAmount;
+            const newTotal = validated.totalAmount;
+            const difference = newTotal - oldTotal;
+            if (difference !== 0) {
+              await addToTenantBalance(validated.roomId, difference);
+            }
+            
+            await fetchServices();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to update service");
           }
         } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
+          console.error("Error updating service:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to update service. Please try again.";
+          addToast({
+            type: "danger",
+            title: "Update Failed",
+            message: errorMessage,
+          });
+          return;
         }
 
         setServiceForm({
@@ -356,38 +439,30 @@ export default function MonthlyServicesPage() {
           message: "Monthly service has been updated successfully.",
         });
       } else {
-        const newService: MonthlyService = {
-          id: uuidv4(),
-          ...validated,
-          waterPrevious: validated.waterPrevious ?? null,
-          waterCurrent: validated.waterCurrent ?? null,
-          waterPricePerUnit: validated.waterPricePerUnit ?? null,
-          waterTotal: validated.waterTotal ?? null,
-          electricityPrevious: validated.electricityPrevious ?? null,
-          electricityCurrent: validated.electricityCurrent ?? null,
-          electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
-          electricityTotal: validated.electricityTotal ?? null,
-          trashFee: validated.trashFee ?? null,
-          maintenanceFee: validated.maintenanceFee ?? null,
-          notes: validated.notes ?? null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const updatedServices = [...services, newService];
-        setServices(updatedServices);
-
         try {
-          await fetch("/api/monthly-services", {
+          const response = await fetch("/api/monthly-services", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
-
-          // Add total amount to tenant's balance (if room is rented)
-          await addToTenantBalance(validated.roomId, validated.totalAmount);
+          
+          if (response.ok) {
+            // Add total amount to tenant's balance (if room is rented)
+            await addToTenantBalance(validated.roomId, validated.totalAmount);
+            await fetchServices();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to create service");
+          }
         } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
+          console.error("Error creating service:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to create service. Please try again.";
+          addToast({
+            type: "danger",
+            title: "Create Failed",
+            message: errorMessage,
+          });
+          return;
         }
 
         setServiceForm({
@@ -482,8 +557,102 @@ export default function MonthlyServicesPage() {
       return;
     }
 
-    // Navigate to payments page
-    router.push("/admin/payments");
+    // Set payment service and pre-fill payment form
+    setPaymentService(service);
+    // Only use monthly service total, not monthly rent
+    setPaymentForm({
+      tenantId: activeRent.tenantId,
+      monthlyRent: 0, // Set to 0 since we're only paying for service
+      paidAmount: service.totalAmount, // Pre-fill with Monthly Service total only
+      balance: 0, // Will be calculated
+      status: "Paid" as "Paid" | "Partial" | "Pending" | "Overdue",
+      paymentDate: dayjs().format("YYYY-MM-DD"),
+      monthlyServiceId: service.id,
+      notes: `Payment for ${dayjs(service.month).format("MMMM YYYY")} service`,
+    });
+    setOpenPaymentModal(true);
+  };
+
+  // Calculate balance when paid amount changes (only based on service, not rent)
+  useEffect(() => {
+    if (paymentService) {
+      // Only use monthly service total, not monthly rent
+      const totalDue = paymentService.totalAmount;
+      const balance = totalDue - paymentForm.paidAmount;
+      setPaymentForm((prev) => ({ ...prev, balance }));
+
+      // Auto-update status based on balance
+      if (balance <= 0) {
+        setPaymentForm((prev) => ({ ...prev, status: "Paid" }));
+      } else if (paymentForm.paidAmount > 0) {
+        setPaymentForm((prev) => ({ ...prev, status: "Partial" }));
+      } else {
+        setPaymentForm((prev) => ({ ...prev, status: "Pending" }));
+      }
+    }
+  }, [paymentForm.paidAmount, paymentService]);
+
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPaymentErrors({});
+
+    try {
+      const validated = paymentSchema.parse(paymentForm);
+
+      const response = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+      });
+
+      if (response.ok) {
+        addToast({
+          type: "success",
+          title: "Payment Added",
+          message: "Payment has been added successfully.",
+        });
+        setOpenPaymentModal(false);
+        setPaymentService(null);
+        setPaymentForm({
+          tenantId: "",
+          monthlyRent: 0,
+          paidAmount: 0,
+          balance: 0,
+          status: "Pending",
+          paymentDate: dayjs().format("YYYY-MM-DD"),
+          monthlyServiceId: "",
+          notes: "",
+        });
+        // Refresh services to update payment status
+        await fetchServices();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create payment");
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const errors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path[0]) {
+            errors[err.path[0].toString()] = err.message;
+          }
+        });
+        setPaymentErrors(errors);
+        addToast({
+          type: "danger",
+          title: "Validation Error",
+          message: "Please check the form and fix the errors.",
+        });
+      } else {
+        console.error("Error creating payment:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to create payment. Please try again.";
+        addToast({
+          type: "danger",
+          title: "Error",
+          message: errorMessage,
+        });
+      }
+    }
   };
 
   const printUnpaidInvoice = (service: MonthlyService) => {
@@ -785,23 +954,26 @@ export default function MonthlyServicesPage() {
   const confirmDeleteService = async () => {
     if (!serviceToDelete) return;
 
-    const updatedServices = services.filter((s) => s.id !== serviceToDelete);
-    setServices(updatedServices);
-
     try {
-      await fetch(`/api/monthly-services/${serviceToDelete}`, {
+      const response = await fetch(`/api/monthly-services/${serviceToDelete}`, {
         method: "DELETE",
       });
-      addToast({
-        type: "success",
-        title: "Service Deleted",
-        message: "Monthly service has been deleted successfully.",
-      });
+      
+      if (response.ok) {
+        await fetchServices();
+        addToast({
+          type: "success",
+          title: "Service Deleted",
+          message: "Monthly service has been deleted successfully.",
+        });
+      } else {
+        throw new Error("Failed to delete service");
+      }
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("Error deleting service:", error);
       addToast({
         type: "danger",
-        title: "Delete Error",
+        title: "Delete Failed",
         message: "Failed to delete service. Please try again.",
       });
     }
@@ -1389,6 +1561,196 @@ export default function MonthlyServicesPage() {
               <Button type="submit">
                 {editingService ? "Update Service" : "Add Service"}
               </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Modal */}
+      <Dialog open={openPaymentModal} onOpenChange={setOpenPaymentModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Add Payment</DialogTitle>
+            <DialogDescription>
+              Record a new payment for {paymentService ? dayjs(paymentService.month).format("MMMM YYYY") : ""} service
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePaymentSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="payment-tenant">
+                Tenant <span className="text-destructive">*</span>
+              </Label>
+              <select
+                id="payment-tenant"
+                className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  paymentErrors.tenantId ? "border-destructive" : "border-input"
+                }`}
+                value={paymentForm.tenantId}
+                onChange={(e) => {
+                  setPaymentForm({ ...paymentForm, tenantId: e.target.value });
+                  if (paymentErrors.tenantId) {
+                    setPaymentErrors({ ...paymentErrors, tenantId: "" });
+                  }
+                }}
+                disabled
+              >
+                <option value="">Select tenant</option>
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name} - {tenant.phone}
+                  </option>
+                ))}
+              </select>
+              {paymentErrors.tenantId && (
+                <p className="text-sm text-destructive font-medium">{paymentErrors.tenantId}</p>
+              )}
+            </div>
+
+            {paymentService && (
+              <div className="space-y-2">
+                <Label htmlFor="payment-monthly-service">
+                  Monthly Service
+                </Label>
+                <Input
+                  id="payment-monthly-service"
+                  value={`${dayjs(paymentService.month).format("MMM YYYY")} - $${paymentService.totalAmount.toFixed(2)}`}
+                  readOnly
+                  className="bg-muted"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment-paid-amount">
+                  Paid Amount <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="payment-paid-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={paymentForm.paidAmount}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    setPaymentForm({ ...paymentForm, paidAmount: value });
+                    if (paymentErrors.paidAmount) {
+                      setPaymentErrors({ ...paymentErrors, paidAmount: "" });
+                    }
+                  }}
+                  className={paymentErrors.paidAmount ? "border-destructive" : ""}
+                />
+                {paymentErrors.paidAmount && (
+                  <p className="text-sm text-destructive font-medium">{paymentErrors.paidAmount}</p>
+                )}
+                {paymentService && (
+                  <p className="text-xs text-muted-foreground">
+                    Service Total: ${paymentService.totalAmount.toFixed(2)}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment-balance">Balance</Label>
+                <Input
+                  id="payment-balance"
+                  type="number"
+                  step="0.01"
+                  value={paymentForm.balance.toFixed(2)}
+                  readOnly
+                  className="bg-muted font-semibold"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {paymentService
+                    ? `${paymentService.totalAmount.toFixed(2)} - ${paymentForm.paidAmount.toFixed(2)}`
+                    : "0.00"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment-status">
+                  Status <span className="text-destructive">*</span>
+                </Label>
+                <select
+                  id="payment-status"
+                  className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    paymentErrors.status ? "border-destructive" : "border-input"
+                  }`}
+                  value={paymentForm.status}
+                  onChange={(e) => {
+                    setPaymentForm({ ...paymentForm, status: e.target.value as "Paid" | "Partial" | "Pending" | "Overdue" });
+                    if (paymentErrors.status) {
+                      setPaymentErrors({ ...paymentErrors, status: "" });
+                    }
+                  }}
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Overdue">Overdue</option>
+                </select>
+                {paymentErrors.status && (
+                  <p className="text-sm text-destructive font-medium">{paymentErrors.status}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment-date">
+                  Payment Date <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="payment-date"
+                  type="date"
+                  value={paymentForm.paymentDate}
+                  onChange={(e) => {
+                    setPaymentForm({ ...paymentForm, paymentDate: e.target.value });
+                    if (paymentErrors.paymentDate) {
+                      setPaymentErrors({ ...paymentErrors, paymentDate: "" });
+                    }
+                  }}
+                  className={paymentErrors.paymentDate ? "border-destructive" : ""}
+                />
+                {paymentErrors.paymentDate && (
+                  <p className="text-sm text-destructive font-medium">{paymentErrors.paymentDate}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment-notes">Notes</Label>
+              <Textarea
+                id="payment-notes"
+                value={paymentForm.notes}
+                onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                placeholder="Additional notes about this payment..."
+                rows={3}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setOpenPaymentModal(false);
+                  setPaymentService(null);
+                  setPaymentForm({
+                    tenantId: "",
+                    monthlyRent: 0,
+                    paidAmount: 0,
+                    balance: 0,
+                    status: "Pending",
+                    paymentDate: dayjs().format("YYYY-MM-DD"),
+                    monthlyServiceId: "",
+                    notes: "",
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Add Payment</Button>
             </DialogFooter>
           </form>
         </DialogContent>

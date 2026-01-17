@@ -25,7 +25,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { v4 as uuidv4 } from "uuid";
 import { Receipt, Plus, Trash2, Edit, FileText, Download, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import {
@@ -62,12 +61,6 @@ type Rent = {
   contract: string | null;
   createdAt: string;
   updatedAt: string;
-  tenant?: {
-    id: string;
-    name: string;
-    phone: string;
-    profile: string | null;
-  };
 };
 
 type Room = {
@@ -113,6 +106,72 @@ export default function RentsPage() {
 
   const [rentErrors, setRentErrors] = useState<Record<string, string>>({});
 
+  const fetchRents = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rents", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRents(data || []);
+      } else {
+        setRents([]);
+      }
+    } catch (error) {
+      console.error("Error fetching rents:", error);
+      setRents([]);
+    }
+  }, []);
+
+  const fetchRooms = useCallback(async () => {
+    try {
+      const response = await fetch("/api/rooms", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(data || []);
+      } else {
+        setRooms([]);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+      setRooms([]);
+    }
+  }, []);
+
+  const fetchTenants = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tenants", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTenants(data || []);
+      } else {
+        setTenants([]);
+      }
+    } catch (error) {
+      console.error("Error fetching tenants:", error);
+      setTenants([]);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -124,7 +183,7 @@ export default function RentsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchRents, fetchRooms, fetchTenants]);
 
   useEffect(() => {
     loadData();
@@ -156,42 +215,6 @@ export default function RentsPage() {
       }
     }
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
-
-  const fetchRents = async () => {
-    try {
-      const response = await fetch("/api/rents");
-      if (response.ok) {
-        const data = await response.json();
-        setRents(data);
-      }
-    } catch (error) {
-      console.error("Error fetching rents:", error);
-    }
-  };
-
-  const fetchRooms = async () => {
-    try {
-      const response = await fetch("/api/rooms");
-      if (response.ok) {
-        const data = await response.json();
-        setRooms(data);
-      }
-    } catch (error) {
-      console.error("Error fetching rooms:", error);
-    }
-  };
-
-  const fetchTenants = async () => {
-    try {
-      const response = await fetch("/api/tenants");
-      if (response.ok) {
-        const data = await response.json();
-        setTenants(data);
-      }
-    } catch (error) {
-      console.error("Error fetching tenants:", error);
-    }
-  };
 
   const handleContractUpload = async (file: File) => {
     try {
@@ -235,25 +258,24 @@ export default function RentsPage() {
       const validated = rentSchema.parse(rentForm);
 
       if (editingRent) {
-        const updatedRents = rents.map((r) =>
-          r.id === editingRent.id
-            ? {
-                ...r,
-                ...validated,
-                updatedAt: new Date().toISOString(),
-              }
-            : r
-        );
-        setRents(updatedRents);
-
         try {
-          await fetch(`/api/rents/${editingRent.id}`, {
+          const response = await fetch(`/api/rents/${editingRent.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchRents();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to update rent");
+          }
         } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
+          console.error("Error updating rent:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to update rent. Please try again.";
+          alert(errorMessage);
+          return;
         }
 
         setRentForm({
@@ -271,25 +293,24 @@ export default function RentsPage() {
         setEditingRent(null);
         setOpenRentModal(false);
       } else {
-        const newRent: Rent = {
-          id: uuidv4(),
-          ...validated,
-          contract: validated.contract ?? null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const updatedRents = [...rents, newRent];
-        setRents(updatedRents);
-
         try {
-          await fetch("/api/rents", {
+          const response = await fetch("/api/rents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
+          
+          if (response.ok) {
+            await fetchRents();
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to create rent");
+          }
         } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
+          console.error("Error creating rent:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to create rent. Please try again.";
+          alert(errorMessage);
+          return;
         }
 
         setRentForm({
@@ -322,15 +343,19 @@ export default function RentsPage() {
   const handleDeleteRent = async (id: string) => {
     if (!confirm("Are you sure you want to delete this rent?")) return;
 
-    const updatedRents = rents.filter((r) => r.id !== id);
-    setRents(updatedRents);
-
     try {
-      await fetch(`/api/rents/${id}`, {
+      const response = await fetch(`/api/rents/${id}`, {
         method: "DELETE",
       });
+      
+      if (response.ok) {
+        await fetchRents();
+      } else {
+        throw new Error("Failed to delete rent");
+      }
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("Error deleting rent:", error);
+      alert("Failed to delete rent. Please try again.");
     }
   };
 
@@ -757,20 +782,33 @@ export default function RentsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {rent.tenant?.profile && (
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage 
-                              src={rent.tenant.profile.startsWith('/') ? rent.tenant.profile : `/uploads/tenants/${rent.tenant.profile}`} 
-                              alt={rent.tenant.name} 
-                            />
-                            <AvatarFallback className="text-xs">
-                              {rent.tenant.name[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
+                        {(() => {
+                          const rentTenant = tenants.find((t) => t.id === rent.tenantId);
+                          if (rentTenant?.profile) {
+                            return (
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage 
+                                  src={rentTenant.profile.startsWith('/') ? rentTenant.profile : `/uploads/tenants/${rentTenant.profile}`} 
+                                  alt={rentTenant.name} 
+                                />
+                                <AvatarFallback className="text-xs">
+                                  {rentTenant.name[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                            );
+                          }
+                          return null;
+                        })()}
                         <div>
-                          <div className="font-medium">{rent.tenant?.name || "N/A"}</div>
-                          <div className="text-sm text-muted-foreground">{rent.tenant?.phone || "N/A"}</div>
+                          {(() => {
+                            const rentTenant = tenants.find((t) => t.id === rent.tenantId);
+                            return (
+                              <>
+                                <div className="font-medium">{rentTenant?.name || "N/A"}</div>
+                                <div className="text-sm text-muted-foreground">{rentTenant?.phone || "N/A"}</div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </TableCell>

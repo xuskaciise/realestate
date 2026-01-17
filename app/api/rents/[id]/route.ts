@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import connectDB from "@/lib/mongoose";
+import Rent from "@/lib/models/Rent";
+import Room from "@/lib/models/Room";
+import House from "@/lib/models/House";
+import Tenant from "@/lib/models/Tenant";
 import { z } from "zod";
 
 const rentSchema = z.object({
-  roomId: z.string().uuid("Room must be selected"),
-  tenantId: z.string().uuid("Tenant must be selected"),
+  roomId: z.string().min(1, "Room must be selected"),
+  tenantId: z.string().min(1, "Tenant must be selected"),
   guarantorName: z.string().min(1, "Guarantor name is required"),
   guarantorPhone: z.string().min(1, "Guarantor phone is required"),
   monthlyRent: z.number().positive("Monthly rent must be positive"),
@@ -20,17 +24,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const rent = await prisma.rent.findUnique({
-      where: { id: params.id },
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-        tenant: true,
-      },
-    });
+    await connectDB();
+    const rent = await Rent.findById(params.id).lean();
 
     if (!rent) {
       return NextResponse.json(
@@ -39,7 +34,17 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(rent);
+    // Return normalized data
+    return NextResponse.json({
+      ...rent,
+      id: rent._id.toString(),
+      roomId: rent.roomId.toString(),
+      tenantId: rent.tenantId.toString(),
+      startDate: rent.startDate ? rent.startDate.toISOString() : null,
+      endDate: rent.endDate ? rent.endDate.toISOString() : null,
+      createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: rent.updatedAt ? rent.updatedAt.toISOString() : new Date().toISOString(),
+    });
   } catch (error) {
     console.error("Error fetching rent:", error);
     return NextResponse.json(
@@ -57,24 +62,43 @@ export async function PUT(
     const body = await request.json();
     const validated = rentSchema.parse(body);
 
-    const rent = await prisma.rent.update({
-      where: { id: params.id },
-      data: {
-        ...validated,
+    await connectDB();
+
+    const rent = await Rent.findByIdAndUpdate(
+      params.id,
+      {
+        roomId: validated.roomId,
+        tenantId: validated.tenantId,
+        guarantorName: validated.guarantorName,
+        guarantorPhone: validated.guarantorPhone,
+        monthlyRent: validated.monthlyRent,
+        months: validated.months,
+        totalRent: validated.totalRent,
         startDate: new Date(validated.startDate),
         endDate: new Date(validated.endDate),
+        contract: validated.contract || null,
       },
-      include: {
-        room: {
-          include: {
-            house: true,
-          },
-        },
-        tenant: true,
-      },
-    });
+      { new: true, runValidators: true }
+    ).lean();
 
-    return NextResponse.json(rent);
+    if (!rent) {
+      return NextResponse.json(
+        { error: "Rent not found" },
+        { status: 404 }
+      );
+    }
+
+    // Return normalized data
+    return NextResponse.json({
+      ...rent,
+      id: rent._id.toString(),
+      roomId: rent.roomId.toString(),
+      tenantId: rent.tenantId.toString(),
+      startDate: rent.startDate ? rent.startDate.toISOString() : null,
+      endDate: rent.endDate ? rent.endDate.toISOString() : null,
+      createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: rent.updatedAt ? rent.updatedAt.toISOString() : new Date().toISOString(),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -95,9 +119,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.rent.delete({
-      where: { id: params.id },
-    });
+    await connectDB();
+    const rent = await Rent.findByIdAndDelete(params.id);
+
+    if (!rent) {
+      return NextResponse.json(
+        { error: "Rent not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ message: "Rent deleted successfully" });
   } catch (error) {
