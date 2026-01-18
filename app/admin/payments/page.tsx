@@ -171,30 +171,18 @@ export default function PaymentsPage() {
   }, [loadData]);
 
   // Calculate balance when monthly rent or paid amount changes (considering previous payments)
+  // Note: This form is only for rent payments, not monthly services
   useEffect(() => {
-    // Get monthly service amount if selected
-    let serviceAmount = 0;
-    if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
-      const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
-      if (selectedService) {
-        serviceAmount = selectedService.totalAmount;
-      }
-    }
+    // Total amount due = monthly rent only (no monthly service in this form)
+    const totalDue = paymentForm.monthlyRent;
 
-    // Total amount due = monthly rent + monthly service
-    const totalDue = paymentForm.monthlyRent + serviceAmount;
-
-    // Find all previous payments for this tenant (and same service if applicable)
+    // Find all previous payments for this tenant with same monthlyRent (rent payments only)
     let previousPaidAmount = 0;
     if (paymentForm.tenantId) {
       const previousPayments = payments.filter((p) => {
         if (p.tenantId !== paymentForm.tenantId) return false;
-        if (paymentForm.monthlyServiceId) {
-          return p.monthlyServiceId === paymentForm.monthlyServiceId;
-        } else {
-          // If no service, only count payments without service or with same monthlyRent
-          return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
-        }
+        // Only count rent payments (no monthlyServiceId) with same monthlyRent
+        return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
       });
       
       previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
@@ -213,7 +201,7 @@ export default function PaymentsPage() {
     } else {
       setPaymentForm((prev) => ({ ...prev, status: "Pending" }));
     }
-  }, [paymentForm.monthlyRent, paymentForm.paidAmount, paymentForm.monthlyServiceId, paymentForm.tenantId, monthlyServices, payments]);
+  }, [paymentForm.monthlyRent, paymentForm.paidAmount, paymentForm.tenantId, payments]);
 
   // Auto-fill monthly rent when tenant is selected
   useEffect(() => {
@@ -241,19 +229,8 @@ export default function PaymentsPage() {
       // Reset monthly rent when tenant is cleared
       setPaymentForm((prev) => ({ ...prev, monthlyRent: 0 }));
     }
-  }, [paymentForm.tenantId, rents]);
+  }, [paymentForm.tenantId, paymentForm.monthlyRent, rents]);
 
-  // Auto-fill paid amount when monthly service is selected
-  useEffect(() => {
-    if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
-      const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
-      if (selectedService) {
-        // Auto-fill paid amount with monthly rent + monthly service total amount
-        const totalAmount = paymentForm.monthlyRent + selectedService.totalAmount;
-        setPaymentForm((prev) => ({ ...prev, paidAmount: totalAmount }));
-      }
-    }
-  }, [paymentForm.monthlyServiceId, paymentForm.monthlyRent, monthlyServices]);
 
   const fetchPayments = async () => {
     try {
@@ -307,28 +284,17 @@ export default function PaymentsPage() {
     e.preventDefault();
     setPaymentErrors({});
 
-    // Validate balance calculation
-    let serviceAmount = 0;
-    if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
-      const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
-      if (selectedService) {
-        serviceAmount = selectedService.totalAmount;
-      }
-    }
+    // Validate balance calculation (rent payments only, no monthly service)
+    const totalDue = paymentForm.monthlyRent;
 
-    const totalDue = paymentForm.monthlyRent + serviceAmount;
-
-    // Find all previous payments for this tenant (excluding current if editing)
+    // Find all previous payments for this tenant with same monthlyRent (rent payments only)
     let previousPaidAmount = 0;
     if (paymentForm.tenantId) {
       const previousPayments = payments.filter((p) => {
         if (p.tenantId !== paymentForm.tenantId) return false;
         if (editingPayment && p.id === editingPayment.id) return false; // Exclude current payment if editing
-        if (paymentForm.monthlyServiceId) {
-          return p.monthlyServiceId === paymentForm.monthlyServiceId;
-        } else {
-          return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
-        }
+        // Only count rent payments (no monthlyServiceId) with same monthlyRent
+        return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
       });
       
       previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
@@ -336,6 +302,19 @@ export default function PaymentsPage() {
 
     const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
     const calculatedBalance = totalDue - totalPaidAmount;
+
+    // Validate that paid amount doesn't exceed monthly rent
+    if (paymentForm.monthlyRent > 0 && paymentForm.paidAmount > paymentForm.monthlyRent) {
+      setPaymentErrors({
+        paidAmount: `Paid amount ($${paymentForm.paidAmount.toFixed(2)}) cannot exceed monthly rent ($${paymentForm.monthlyRent.toFixed(2)}). Maximum allowed: $${paymentForm.monthlyRent.toFixed(2)}`,
+      });
+      addToast({
+        type: "danger",
+        title: "Invalid Payment Amount",
+        message: `Paid amount cannot exceed monthly rent. Maximum allowed: $${paymentForm.monthlyRent.toFixed(2)}`,
+      });
+      return;
+    }
 
     // Calculate remaining balance before this payment
     const remainingBalance = totalDue - previousPaidAmount;
@@ -380,7 +359,12 @@ export default function PaymentsPage() {
     }
 
     try {
-      const validated = paymentSchema.parse(paymentForm);
+      // For rent-only payments, ensure monthlyServiceId is not included
+      const formData = { ...paymentForm };
+      if (!formData.monthlyServiceId || formData.monthlyServiceId === "") {
+        delete formData.monthlyServiceId;
+      }
+      const validated = paymentSchema.parse(formData);
 
       if (editingPayment) {
         const updatedPayments = payments.map((p) =>
@@ -1069,52 +1053,6 @@ export default function PaymentsPage() {
                 )}
               </div>
 
-              {/* Monthly Services Selection */}
-              {paymentForm.tenantId && (
-                <div className="space-y-2">
-                  <Label htmlFor="payment-monthly-service">
-                    Monthly Service (Optional)
-                  </Label>
-                  <select
-                    id="payment-monthly-service"
-                    className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border-input"
-                    value={paymentForm.monthlyServiceId}
-                    onChange={(e) => {
-                      setPaymentForm({ ...paymentForm, monthlyServiceId: e.target.value });
-                    }}
-                  >
-                    <option value="">Select monthly service (optional)</option>
-                    {(() => {
-                      // Get active rent for selected tenant to find their room
-                      const today = dayjs();
-                      const activeRent = rents.find(
-                        (r) =>
-                          r.tenantId === paymentForm.tenantId &&
-                          (today.isAfter(dayjs(r.startDate)) || today.isSame(dayjs(r.startDate), "day")) &&
-                          (today.isBefore(dayjs(r.endDate)) || today.isSame(dayjs(r.endDate), "day"))
-                      );
-
-                      if (activeRent && activeRent.roomId) {
-                        // Filter monthly services for this tenant's room
-                        const tenantServices = monthlyServices.filter(
-                          (s) => s.roomId === activeRent.roomId
-                        );
-                        const serviceRoom = rooms.find((r) => r.id === activeRent.roomId);
-                        return tenantServices.map((service) => (
-                          <option key={service.id} value={service.id}>
-                            {dayjs(service.month).format("MMM YYYY")} - ${service.totalAmount.toFixed(2)} ({serviceRoom?.name || "N/A"})
-                          </option>
-                        ));
-                      }
-                      return null;
-                    })()}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Select a monthly service to auto-fill the paid amount
-                  </p>
-                </div>
-              )}
-
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="payment-monthly-rent">
@@ -1153,9 +1091,14 @@ export default function PaymentsPage() {
                     type="number"
                     step="0.01"
                     min="0"
+                    max={paymentForm.monthlyRent > 0 ? paymentForm.monthlyRent : undefined}
                     value={paymentForm.paidAmount}
                     onChange={(e) => {
-                      const value = parseFloat(e.target.value) || 0;
+                      let value = parseFloat(e.target.value) || 0;
+                      // Cap the value at monthlyRent if monthlyRent is set
+                      if (paymentForm.monthlyRent > 0 && value > paymentForm.monthlyRent) {
+                        value = paymentForm.monthlyRent;
+                      }
                       setPaymentForm({ ...paymentForm, paidAmount: value });
                       if (paymentErrors.paidAmount) {
                         setPaymentErrors({ ...paymentErrors, paidAmount: "" });
@@ -1165,6 +1108,11 @@ export default function PaymentsPage() {
                   />
                   {paymentErrors.paidAmount && (
                     <p className="text-sm text-destructive font-medium">{paymentErrors.paidAmount}</p>
+                  )}
+                  {paymentForm.monthlyRent > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Maximum: ${paymentForm.monthlyRent.toFixed(2)} (Monthly Rent)
+                    </p>
                   )}
                 </div>
 
@@ -1180,37 +1128,28 @@ export default function PaymentsPage() {
                   />
                   <p className={`text-xs ${paymentForm.balance < -0.01 ? "text-orange-600 font-medium" : "text-muted-foreground"}`}>
                     {(() => {
-                      let serviceAmount = 0;
-                      if (paymentForm.monthlyServiceId && monthlyServices.length > 0) {
-                        const selectedService = monthlyServices.find((s) => s.id === paymentForm.monthlyServiceId);
-                        if (selectedService) {
-                          serviceAmount = selectedService.totalAmount;
-                        }
-                      }
-                      const totalDue = paymentForm.monthlyRent + serviceAmount;
+                      // Rent payments only (no monthly service)
+                      const totalDue = paymentForm.monthlyRent;
                       
-                      // Calculate previous payments
+                      // Calculate previous payments (rent payments only)
                       let previousPaidAmount = 0;
                       if (paymentForm.tenantId) {
                         const previousPayments = payments.filter((p) => {
                           if (p.tenantId !== paymentForm.tenantId) return false;
                           if (editingPayment && p.id === editingPayment.id) return false; // Exclude current if editing
-                          if (paymentForm.monthlyServiceId) {
-                            return p.monthlyServiceId === paymentForm.monthlyServiceId;
-                          } else {
-                            return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
-                          }
+                          // Only count rent payments (no monthlyServiceId) with same monthlyRent
+                          return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
                         });
                         previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
                       }
                       
                       const remainingBalance = totalDue - previousPaidAmount;
                       const totalPaid = previousPaidAmount + paymentForm.paidAmount;
+                      const warning = paymentForm.paidAmount > remainingBalance + 0.01 
+                        ? ` ⚠️ Overpayment! Max: $${remainingBalance.toFixed(2)}`
+                        : "";
                       
                       if (previousPaidAmount > 0) {
-                        const warning = paymentForm.paidAmount > remainingBalance + 0.01 
-                          ? ` ⚠️ Overpayment! Max: $${remainingBalance.toFixed(2)}`
-                          : "";
                         return `Total Due: $${totalDue.toFixed(2)} - Previous: $${previousPaidAmount.toFixed(2)} - Current: $${paymentForm.paidAmount.toFixed(2)} = $${paymentForm.balance.toFixed(2)}${warning}`;
                       }
                       return `Total Due: $${totalDue.toFixed(2)} - Current Payment: $${paymentForm.paidAmount.toFixed(2)}`;
@@ -1293,15 +1232,16 @@ export default function PaymentsPage() {
                 onClick={() => {
                   setOpenPaymentModal(false);
                   setEditingPayment(null);
-                  setPaymentForm({
-                    tenantId: "",
-                    monthlyRent: 0,
-                    paidAmount: 0,
-                    balance: 0,
-                    status: "Pending",
-                    paymentDate: dayjs().format("YYYY-MM-DD"),
-                    notes: "",
-                  });
+                    setPaymentForm({
+                      tenantId: "",
+                      monthlyRent: 0,
+                      paidAmount: 0,
+                      balance: 0,
+                      status: "Pending",
+                      paymentDate: dayjs().format("YYYY-MM-DD"),
+                      monthlyServiceId: "",
+                      notes: "",
+                    });
                 }}
               >
                 Cancel
