@@ -737,6 +737,16 @@ export default function ReportsPage() {
 
   // Print all invoices in one document
   const printAllInvoices = () => {
+    // Get the filtered data - exactly what's shown in the table
+    const dataToPrint = activeTab === "rent" ? filteredRents : filteredPayments;
+    
+    console.log(`Printing ${dataToPrint.length} ${activeTab === "rent" ? "rent" : "payment"} invoices`);
+    
+    if (dataToPrint.length === 0) {
+      alert("No records to print. Please apply filters to see records.");
+      return;
+    }
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -904,9 +914,12 @@ export default function ReportsPage() {
         <body>
     `;
 
+    // Generate invoices for all filtered items
     if (activeTab === "rent") {
-      filteredRents.forEach((rent) => {
+      // Use filteredRents - exactly what's shown in the table
+      filteredRents.forEach((rent, index) => {
         const rentRoom = rooms.find((r) => r.id === rent.roomId);
+        const isLast = index === filteredRents.length - 1;
         allInvoicesHTML += `
           <div class="invoice-page">
             <div class="header">
@@ -978,7 +991,9 @@ export default function ReportsPage() {
         `;
       });
     } else {
-      filteredPayments.forEach((payment) => {
+      // Use filteredPayments - exactly what's shown in the table
+      filteredPayments.forEach((payment, index) => {
+        const isLast = index === filteredPayments.length - 1;
         allInvoicesHTML += `
           <div class="invoice-page">
             <div class="header">
@@ -1056,11 +1071,24 @@ export default function ReportsPage() {
       </html>
     `;
 
+    // Write all content at once
+    printWindow.document.open();
     printWindow.document.write(allInvoicesHTML);
     printWindow.document.close();
+    
+    // Wait for content to render, then print
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    };
+    
+    // Fallback if onload doesn't fire
     setTimeout(() => {
-      printWindow.print();
-    }, 500);
+      if (printWindow.document.readyState === 'complete') {
+        printWindow.print();
+      }
+    }, 1000);
   };
 
   // Export to PDF
