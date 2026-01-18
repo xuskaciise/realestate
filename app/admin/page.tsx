@@ -42,7 +42,8 @@ type Rent = {
 
 type Payment = {
   id: string;
-  amount: number;
+  paidAmount: number;
+  amount?: number; // Legacy field, use paidAmount
   tenantId: string;
   createdAt: string;
 };
@@ -156,7 +157,7 @@ export default function AdminDashboard() {
     const endDate = dayjs(rent.endDate);
     return endDate.isAfter(today) || endDate.isSame(today, 'day');
   }).length;
-  const totalRevenue = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const totalRevenue = payments.reduce((sum, payment) => sum + (payment.paidAmount || payment.amount || 0), 0);
   const activeUsers = users.filter(user => user.status === 'Active').length;
 
   // Get recent rents (last 5)
@@ -176,14 +177,14 @@ export default function AdminDashboard() {
       id: rent.id,
       title: `New rent agreement created`,
       time: rent.createdAt,
-      amount: rent.totalRent,
+      amount: rent.totalRent || 0,
     })),
     ...recentPayments.map(payment => ({
       type: 'payment' as const,
       id: payment.id,
       title: `Payment received`,
       time: payment.createdAt,
-      amount: payment.amount,
+      amount: payment.paidAmount || payment.amount || 0,
     })),
   ]
     .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
@@ -274,7 +275,7 @@ export default function AdminDashboard() {
                           {dayjs(activity.time).fromNow()}
                         </p>
                         <p className="text-xs font-semibold text-primary">
-                          ${activity.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ${(activity.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                       </div>
                     </div>
