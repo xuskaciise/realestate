@@ -254,8 +254,10 @@ export default function RentsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setRentForm({ ...rentForm, contract: data.fileName });
-        return data.fileName;
+        // Use base64 if available, otherwise use fileName
+        const contractValue = data.base64 || data.fileName;
+        setRentForm({ ...rentForm, contract: contractValue });
+        return contractValue;
       } else {
         throw new Error("Upload failed");
       }
@@ -265,6 +267,17 @@ export default function RentsPage() {
       return null;
     } finally {
       setUploadingContract(false);
+    }
+  };
+
+  const handleViewContract = (contract: string) => {
+    if (contract.startsWith('data:')) {
+      // Handle base64 data URL - open directly in new window
+      window.open(contract, '_blank');
+    } else {
+      // Handle file path
+      const url = contract.startsWith('/') ? contract : `/uploads/contracts/${contract}`;
+      window.open(url, '_blank');
     }
   };
 
@@ -871,15 +884,13 @@ export default function RentsPage() {
                     </TableCell>
                     <TableCell>
                       {rent.contract ? (
-                        <a
-                          href={rent.contract.startsWith('/') ? rent.contract : `/uploads/contracts/${rent.contract}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-primary hover:underline"
+                        <button
+                          onClick={() => handleViewContract(rent.contract!)}
+                          className="flex items-center gap-1 text-primary hover:underline cursor-pointer"
                         >
                           <Download className="h-4 w-4" />
                           View
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-muted-foreground text-sm">No contract</span>
                       )}
