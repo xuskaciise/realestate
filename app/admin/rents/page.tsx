@@ -120,12 +120,15 @@ export default function RentsPage() {
       if (response.ok) {
         const data = await response.json();
         setRents(data || []);
+        return data || [];
       } else {
         setRents([]);
+        return [];
       }
     } catch (error) {
       console.error("Error fetching rents:", error);
       setRents([]);
+      return [];
     }
   }, []);
 
@@ -141,26 +144,27 @@ export default function RentsPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Filter out rooms that have active rents
-        const today = dayjs();
-        const activeRentRoomIds = new Set(
-          rents
-            .filter((rent) => {
-              const startDate = dayjs(rent.startDate);
-              const endDate = dayjs(rent.endDate);
-              // Check if rent is currently active (today is between start and end date)
-              return (
-                (today.isAfter(startDate) || today.isSame(startDate, "day")) &&
-                (today.isBefore(endDate) || today.isSame(endDate, "day"))
-              );
-            })
-            .map((rent) => rent.roomId)
-        );
-        // Only show rooms that don't have active rents (or show all if editing)
-        const availableRooms = editingRent 
-          ? data 
-          : data.filter((room: Room) => !activeRentRoomIds.has(room.id));
-        setRooms(availableRooms || []);
+        // Filter out rooms that have active rents using current rents state
+        if (rents.length > 0 && !editingRent) {
+          const today = dayjs();
+          const activeRentRoomIds = new Set(
+            rents
+              .filter((rent) => {
+                const startDate = dayjs(rent.startDate);
+                const endDate = dayjs(rent.endDate);
+                // Check if rent is currently active (today is between start and end date)
+                return (
+                  (today.isAfter(startDate) || today.isSame(startDate, "day")) &&
+                  (today.isBefore(endDate) || today.isSame(endDate, "day"))
+                );
+              })
+              .map((rent) => rent.roomId)
+          );
+          const availableRooms = data.filter((room: Room) => !activeRentRoomIds.has(room.id));
+          setRooms(availableRooms || []);
+        } else {
+          setRooms(data || []);
+        }
       } else {
         setRooms([]);
       }
@@ -197,9 +201,10 @@ export default function RentsPage() {
       setLoading(true);
       await Promise.all([
         fetchRents(),
-        fetchRooms(),
         fetchTenants(),
       ]);
+      // Fetch rooms after rents are loaded (rooms depends on rents for filtering)
+      await fetchRooms();
     } finally {
       setLoading(false);
     }
@@ -207,7 +212,7 @@ export default function RentsPage() {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, []); // Only run once on mount
 
   // Calculate total rent when monthly rent or months change
   useEffect(() => {
@@ -437,7 +442,10 @@ export default function RentsPage() {
     <div className="space-y-6">
       {loading && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <LoadingOverlay message="Loading rents..." size="lg" />
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
         </div>
       )}
       {/* Header */}
