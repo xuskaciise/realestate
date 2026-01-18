@@ -735,21 +735,332 @@ export default function ReportsPage() {
     }, 250);
   };
 
-  // Print all invoices
+  // Print all invoices in one document
   const printAllInvoices = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    let allInvoicesHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${activeTab === "rent" ? "Rent Invoices" : "Payment Receipts"}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Arial', sans-serif; 
+              padding: 20px; 
+              background: #fff;
+              color: #333;
+            }
+            .invoice-page {
+              max-width: 800px;
+              margin: 0 auto 40px auto;
+              background: white;
+              padding: 40px;
+              border: 1px solid #e0e0e0;
+              page-break-after: always;
+            }
+            .invoice-page:last-child {
+              page-break-after: auto;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 40px;
+              padding-bottom: 20px;
+              border-bottom: 3px solid ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+            }
+            .company-info h1 {
+              font-size: 28px;
+              color: ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+              margin-bottom: 10px;
+            }
+            .company-info p {
+              color: #666;
+              font-size: 14px;
+            }
+            .invoice-info {
+              text-align: right;
+            }
+            .invoice-info h2 {
+              font-size: 24px;
+              color: #333;
+              margin-bottom: 10px;
+            }
+            .invoice-info p {
+              color: #666;
+              font-size: 14px;
+              margin: 5px 0;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 6px 12px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: 600;
+              margin-top: 10px;
+            }
+            .status-paid {
+              background: #d1fae5;
+              color: #065f46;
+            }
+            .status-partial {
+              background: #fef3c7;
+              color: #92400e;
+            }
+            .status-overdue {
+              background: #fee2e2;
+              color: #991b1b;
+            }
+            .details-section {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 40px;
+              margin-bottom: 40px;
+            }
+            .section {
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+            }
+            .section h3 {
+              font-size: 16px;
+              color: ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .section p {
+              margin: 8px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .section strong {
+              color: #000;
+            }
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 30px 0;
+            }
+            .items-table th {
+              background: ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+              color: white;
+              padding: 12px;
+              text-align: left;
+              font-weight: 600;
+            }
+            .items-table td {
+              padding: 12px;
+              border-bottom: 1px solid #e0e0e0;
+            }
+            .items-table tr:last-child td {
+              border-bottom: none;
+            }
+            .total-section {
+              margin-top: 30px;
+              text-align: right;
+            }
+            .total-row {
+              display: flex;
+              justify-content: flex-end;
+              margin: 10px 0;
+              font-size: 16px;
+            }
+            .total-row label {
+              width: 150px;
+              text-align: right;
+              color: #666;
+            }
+            .total-row span {
+              width: 150px;
+              text-align: right;
+              font-weight: 600;
+              color: #333;
+            }
+            .grand-total {
+              font-size: 24px;
+              color: ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+              font-weight: 700;
+              padding-top: 10px;
+              border-top: 2px solid ${activeTab === "rent" ? "#2563eb" : "#10b981"};
+            }
+            .footer {
+              margin-top: 50px;
+              padding-top: 20px;
+              border-top: 1px solid #e0e0e0;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+            @media print {
+              body { padding: 0; }
+              .invoice-page { border: none; padding: 20px; margin-bottom: 20px; }
+              @page { margin: 0; size: A4; }
+            }
+          </style>
+        </head>
+        <body>
+    `;
+
     if (activeTab === "rent") {
-      filteredRents.forEach((rent, index) => {
-        setTimeout(() => {
-          printRentInvoice(rent);
-        }, index * 1000);
+      filteredRents.forEach((rent) => {
+        const rentRoom = rooms.find((r) => r.id === rent.roomId);
+        allInvoicesHTML += `
+          <div class="invoice-page">
+            <div class="header">
+              <div class="company-info">
+                <h1>Real Estate Management</h1>
+                <p>Rent Invoice</p>
+              </div>
+              <div class="invoice-info">
+                <h2>INVOICE</h2>
+                <p><strong>Invoice #:</strong> RENT-${rent.id.slice(-8).toUpperCase()}</p>
+                <p><strong>Date:</strong> ${dayjs(rent.createdAt).format("MMMM DD, YYYY")}</p>
+                <p><strong>Due Date:</strong> ${dayjs(rent.endDate).format("MMMM DD, YYYY")}</p>
+              </div>
+            </div>
+
+            <div class="details-section">
+              <div class="section">
+                <h3>Tenant Information</h3>
+                <p><strong>Name:</strong> ${rent.tenant?.name || "N/A"}</p>
+                <p><strong>Phone:</strong> ${rent.tenant?.phone || "N/A"}</p>
+                <p><strong>Guarantor:</strong> ${rent.guarantorName}</p>
+                <p><strong>Guarantor Phone:</strong> ${rent.guarantorPhone}</p>
+              </div>
+              <div class="section">
+                <h3>Property Information</h3>
+                <p><strong>House:</strong> ${rentRoom?.house.name || "N/A"}</p>
+                <p><strong>Address:</strong> ${rentRoom?.house.address || "N/A"}</p>
+                <p><strong>Room:</strong> ${rentRoom?.name || "N/A"}</p>
+              </div>
+            </div>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Period</th>
+                  <th>Monthly Rent</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rent Payment</td>
+                  <td>${rent.months} month(s)<br>
+                      ${dayjs(rent.startDate).format("MMM DD, YYYY")} - ${dayjs(rent.endDate).format("MMM DD, YYYY")}
+                  </td>
+                  <td>$${rent.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="total-section">
+              <div class="total-row">
+                <label>Subtotal:</label>
+                <span>$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Total Amount:</label>
+                <span class="grand-total">$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Thank you for your business!</p>
+              <p>Generated on ${dayjs().format("MMMM DD, YYYY [at] HH:mm")}</p>
+            </div>
+          </div>
+        `;
       });
     } else {
-      filteredPayments.forEach((payment, index) => {
-        setTimeout(() => {
-          printPaymentInvoice(payment);
-        }, index * 1000);
+      filteredPayments.forEach((payment) => {
+        allInvoicesHTML += `
+          <div class="invoice-page">
+            <div class="header">
+              <div class="company-info">
+                <h1>Real Estate Management</h1>
+                <p>Payment Receipt</p>
+              </div>
+              <div class="invoice-info">
+                <h2>RECEIPT</h2>
+                <p><strong>Receipt #:</strong> PAY-${payment.id.slice(-8).toUpperCase()}</p>
+                <p><strong>Date:</strong> ${dayjs(payment.paymentDate).format("MMMM DD, YYYY")}</p>
+                <span class="status-badge status-${payment.status.toLowerCase()}">${payment.status}</span>
+              </div>
+            </div>
+
+            <div class="details-section">
+              <div class="section">
+                <h3>Tenant Information</h3>
+                <p><strong>Name:</strong> ${payment.tenant?.name || "N/A"}</p>
+                <p><strong>Phone:</strong> ${payment.tenant?.phone || "N/A"}</p>
+              </div>
+              <div class="section">
+                <h3>Payment Details</h3>
+                <p><strong>Payment Date:</strong> ${dayjs(payment.paymentDate).format("MMMM DD, YYYY")}</p>
+                <p><strong>Status:</strong> ${payment.status}</p>
+                ${payment.notes ? `<p><strong>Notes:</strong> ${payment.notes}</p>` : ''}
+              </div>
+            </div>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Monthly Rent</th>
+                  <th>Paid Amount</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rent Payment</td>
+                  <td>$${payment.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${payment.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${payment.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="total-section">
+              <div class="total-row">
+                <label>Monthly Rent:</label>
+                <span>$${payment.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Amount Paid:</label>
+                <span class="grand-total">$${payment.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Remaining Balance:</label>
+                <span style="color: ${payment.balance > 0 ? '#dc2626' : '#10b981'}">$${payment.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Thank you for your payment!</p>
+              <p>Generated on ${dayjs().format("MMMM DD, YYYY [at] HH:mm")}</p>
+            </div>
+          </div>
+        `;
       });
     }
+
+    allInvoicesHTML += `
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(allInvoicesHTML);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   };
 
   // Export to PDF
