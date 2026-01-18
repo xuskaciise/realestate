@@ -86,12 +86,26 @@ type Room = {
   };
 };
 
+type Rent = {
+  id: string;
+  roomId: string;
+  tenantId: string;
+  monthlyRent: number;
+  startDate: string;
+  endDate: string;
+  tenant?: {
+    id: string;
+    name: string;
+    phone: string;
+  };
+};
+
 export default function MonthlyServicesPage() {
   const { addToast } = useToast();
   const router = useRouter();
   const [services, setServices] = useState<MonthlyService[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [rents, setRents] = useState<Array<{ id: string; roomId: string; tenantId: string; monthlyRent: number; startDate: string; endDate: string; tenant?: { id: string; name: string; phone: string } }>>([]);
+  const [rents, setRents] = useState<Rent[]>([]);
   const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number; monthlyServiceId?: string | null }>>([]);
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -1207,10 +1221,10 @@ export default function MonthlyServicesPage() {
       // Find active rent for this room
       const response = await fetch("/api/rents");
       if (response.ok) {
-        const rents = await response.json();
+        const rents: Rent[] = await response.json();
         const today = dayjs();
         const activeRent = rents.find(
-          (rent) =>
+          (rent: Rent) =>
             rent.roomId === roomId &&
             (today.isAfter(dayjs(rent.startDate)) || today.isSame(dayjs(rent.startDate), "day")) &&
             (today.isBefore(dayjs(rent.endDate)) || today.isSame(dayjs(rent.endDate), "day"))
