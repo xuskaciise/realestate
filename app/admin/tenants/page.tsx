@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { User, Plus, Trash2, Edit, Upload, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { User, Plus, Trash2, Edit, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
 import { UploadButton } from "@/lib/uploadthing";
@@ -149,9 +149,9 @@ export default function TenantsPage() {
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
+        setPreviewImage(null);
         setEditingTenant(null);
         setOpenTenantModal(false);
-        setPreviewImage(null);
       } else {
         try {
           const response = await fetch("/api/tenants", {
@@ -174,8 +174,8 @@ export default function TenantsPage() {
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
-        setOpenTenantModal(false);
         setPreviewImage(null);
+        setOpenTenantModal(false);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
