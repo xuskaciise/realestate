@@ -4,6 +4,9 @@ import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
 import { z } from "zod";
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 const roomSchema = z.object({
   name: z.string().min(1, "Name is required"),
   monthlyRent: z.number().positive("Monthly rent must be positive"),
