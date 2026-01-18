@@ -272,114 +272,484 @@ export default function ReportsPage() {
     }
   };
 
-  // Print table
-  const printTable = () => {
+  // Print invoice for rent
+  const printRentInvoice = (rent: Rent) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    let tableHTML = "";
-    if (activeTab === "rent") {
-      tableHTML = `
-        <html>
-          <head>
-            <title>Rent Report</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; font-weight: bold; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <h1>Rent Report</h1>
-            <p>Generated: ${dayjs().format("YYYY-MM-DD HH:mm")}</p>
-            <table>
+    const rentRoom = rooms.find((r) => r.id === rent.roomId);
+    const invoiceHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Rent Invoice - ${rent.id}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Arial', sans-serif; 
+              padding: 40px; 
+              background: #fff;
+              color: #333;
+            }
+            .invoice-container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: white;
+              padding: 40px;
+              border: 1px solid #e0e0e0;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 40px;
+              padding-bottom: 20px;
+              border-bottom: 3px solid #2563eb;
+            }
+            .company-info h1 {
+              font-size: 28px;
+              color: #2563eb;
+              margin-bottom: 10px;
+            }
+            .company-info p {
+              color: #666;
+              font-size: 14px;
+            }
+            .invoice-info {
+              text-align: right;
+            }
+            .invoice-info h2 {
+              font-size: 24px;
+              color: #333;
+              margin-bottom: 10px;
+            }
+            .invoice-info p {
+              color: #666;
+              font-size: 14px;
+              margin: 5px 0;
+            }
+            .details-section {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 40px;
+              margin-bottom: 40px;
+            }
+            .section {
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+            }
+            .section h3 {
+              font-size: 16px;
+              color: #2563eb;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .section p {
+              margin: 8px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .section strong {
+              color: #000;
+            }
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 30px 0;
+            }
+            .items-table th {
+              background: #2563eb;
+              color: white;
+              padding: 12px;
+              text-align: left;
+              font-weight: 600;
+            }
+            .items-table td {
+              padding: 12px;
+              border-bottom: 1px solid #e0e0e0;
+            }
+            .items-table tr:last-child td {
+              border-bottom: none;
+            }
+            .total-section {
+              margin-top: 30px;
+              text-align: right;
+            }
+            .total-row {
+              display: flex;
+              justify-content: flex-end;
+              margin: 10px 0;
+              font-size: 16px;
+            }
+            .total-row label {
+              width: 150px;
+              text-align: right;
+              color: #666;
+            }
+            .total-row span {
+              width: 150px;
+              text-align: right;
+              font-weight: 600;
+              color: #333;
+            }
+            .grand-total {
+              font-size: 24px;
+              color: #2563eb;
+              font-weight: 700;
+              padding-top: 10px;
+              border-top: 2px solid #2563eb;
+            }
+            .footer {
+              margin-top: 50px;
+              padding-top: 20px;
+              border-top: 1px solid #e0e0e0;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+            @media print {
+              body { padding: 0; }
+              .invoice-container { border: none; padding: 20px; }
+              @page { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container">
+            <div class="header">
+              <div class="company-info">
+                <h1>Real Estate Management</h1>
+                <p>Rent Invoice</p>
+              </div>
+              <div class="invoice-info">
+                <h2>INVOICE</h2>
+                <p><strong>Invoice #:</strong> RENT-${rent.id.slice(-8).toUpperCase()}</p>
+                <p><strong>Date:</strong> ${dayjs(rent.createdAt).format("MMMM DD, YYYY")}</p>
+                <p><strong>Due Date:</strong> ${dayjs(rent.endDate).format("MMMM DD, YYYY")}</p>
+              </div>
+            </div>
+
+            <div class="details-section">
+              <div class="section">
+                <h3>Tenant Information</h3>
+                <p><strong>Name:</strong> ${rent.tenant?.name || "N/A"}</p>
+                <p><strong>Phone:</strong> ${rent.tenant?.phone || "N/A"}</p>
+                <p><strong>Guarantor:</strong> ${rent.guarantorName}</p>
+                <p><strong>Guarantor Phone:</strong> ${rent.guarantorPhone}</p>
+              </div>
+              <div class="section">
+                <h3>Property Information</h3>
+                <p><strong>House:</strong> ${rentRoom?.house.name || "N/A"}</p>
+                <p><strong>Address:</strong> ${rentRoom?.house.address || "N/A"}</p>
+                <p><strong>Room:</strong> ${rentRoom?.name || "N/A"}</p>
+              </div>
+            </div>
+
+            <table class="items-table">
               <thead>
                 <tr>
-                  <th>Room</th>
-                  <th>House</th>
-                  <th>Tenant</th>
-                  <th>Guarantor</th>
+                  <th>Description</th>
+                  <th>Period</th>
                   <th>Monthly Rent</th>
-                  <th>Months</th>
-                  <th>Total Rent</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
+                  <th>Total</th>
                 </tr>
               </thead>
               <tbody>
-                ${filteredRents.map((rent) => {
-                  const rentRoom = rooms.find((r) => r.id === rent.roomId);
-                  return `
-                  <tr>
-                    <td>${rentRoom?.name || "N/A"}</td>
-                    <td>${rentRoom?.house.name || "N/A"}</td>
-                    <td>${rent.tenant?.name || "N/A"}</td>
-                    <td>${rent.guarantorName}</td>
-                    <td>$${rent.monthlyRent.toLocaleString()}</td>
-                    <td>${rent.months}</td>
-                    <td>$${rent.totalRent.toLocaleString()}</td>
-                    <td>${dayjs(rent.startDate).format("YYYY-MM-DD")}</td>
-                    <td>${dayjs(rent.endDate).format("YYYY-MM-DD")}</td>
-                  </tr>
-                `;
-                }).join("")}
+                <tr>
+                  <td>Rent Payment</td>
+                  <td>${rent.months} month(s)<br>
+                      ${dayjs(rent.startDate).format("MMM DD, YYYY")} - ${dayjs(rent.endDate).format("MMM DD, YYYY")}
+                  </td>
+                  <td>$${rent.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
               </tbody>
             </table>
-          </body>
-        </html>
-      `;
-    } else {
-      tableHTML = `
-        <html>
-          <head>
-            <title>Payment Report</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; font-weight: bold; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <h1>Payment Report</h1>
-            <p>Generated: ${dayjs().format("YYYY-MM-DD HH:mm")}</p>
-            <table>
+
+            <div class="total-section">
+              <div class="total-row">
+                <label>Subtotal:</label>
+                <span>$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Total Amount:</label>
+                <span class="grand-total">$${rent.totalRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Thank you for your business!</p>
+              <p>Generated on ${dayjs().format("MMMM DD, YYYY [at] HH:mm")}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(invoiceHTML);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  // Print invoice for payment
+  const printPaymentInvoice = (payment: Payment) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const invoiceHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payment Receipt - ${payment.id}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Arial', sans-serif; 
+              padding: 40px; 
+              background: #fff;
+              color: #333;
+            }
+            .invoice-container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: white;
+              padding: 40px;
+              border: 1px solid #e0e0e0;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 40px;
+              padding-bottom: 20px;
+              border-bottom: 3px solid #10b981;
+            }
+            .company-info h1 {
+              font-size: 28px;
+              color: #10b981;
+              margin-bottom: 10px;
+            }
+            .company-info p {
+              color: #666;
+              font-size: 14px;
+            }
+            .invoice-info {
+              text-align: right;
+            }
+            .invoice-info h2 {
+              font-size: 24px;
+              color: #333;
+              margin-bottom: 10px;
+            }
+            .invoice-info p {
+              color: #666;
+              font-size: 14px;
+              margin: 5px 0;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 6px 12px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: 600;
+              margin-top: 10px;
+            }
+            .status-paid {
+              background: #d1fae5;
+              color: #065f46;
+            }
+            .status-partial {
+              background: #fef3c7;
+              color: #92400e;
+            }
+            .status-overdue {
+              background: #fee2e2;
+              color: #991b1b;
+            }
+            .details-section {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 40px;
+              margin-bottom: 40px;
+            }
+            .section {
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+            }
+            .section h3 {
+              font-size: 16px;
+              color: #10b981;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .section p {
+              margin: 8px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .section strong {
+              color: #000;
+            }
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 30px 0;
+            }
+            .items-table th {
+              background: #10b981;
+              color: white;
+              padding: 12px;
+              text-align: left;
+              font-weight: 600;
+            }
+            .items-table td {
+              padding: 12px;
+              border-bottom: 1px solid #e0e0e0;
+            }
+            .items-table tr:last-child td {
+              border-bottom: none;
+            }
+            .total-section {
+              margin-top: 30px;
+              text-align: right;
+            }
+            .total-row {
+              display: flex;
+              justify-content: flex-end;
+              margin: 10px 0;
+              font-size: 16px;
+            }
+            .total-row label {
+              width: 150px;
+              text-align: right;
+              color: #666;
+            }
+            .total-row span {
+              width: 150px;
+              text-align: right;
+              font-weight: 600;
+              color: #333;
+            }
+            .grand-total {
+              font-size: 24px;
+              color: #10b981;
+              font-weight: 700;
+              padding-top: 10px;
+              border-top: 2px solid #10b981;
+            }
+            .footer {
+              margin-top: 50px;
+              padding-top: 20px;
+              border-top: 1px solid #e0e0e0;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+            @media print {
+              body { padding: 0; }
+              .invoice-container { border: none; padding: 20px; }
+              @page { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container">
+            <div class="header">
+              <div class="company-info">
+                <h1>Real Estate Management</h1>
+                <p>Payment Receipt</p>
+              </div>
+              <div class="invoice-info">
+                <h2>RECEIPT</h2>
+                <p><strong>Receipt #:</strong> PAY-${payment.id.slice(-8).toUpperCase()}</p>
+                <p><strong>Date:</strong> ${dayjs(payment.paymentDate).format("MMMM DD, YYYY")}</p>
+                <span class="status-badge status-${payment.status.toLowerCase()}">${payment.status}</span>
+              </div>
+            </div>
+
+            <div class="details-section">
+              <div class="section">
+                <h3>Tenant Information</h3>
+                <p><strong>Name:</strong> ${payment.tenant?.name || "N/A"}</p>
+                <p><strong>Phone:</strong> ${payment.tenant?.phone || "N/A"}</p>
+              </div>
+              <div class="section">
+                <h3>Payment Details</h3>
+                <p><strong>Payment Date:</strong> ${dayjs(payment.paymentDate).format("MMMM DD, YYYY")}</p>
+                <p><strong>Status:</strong> ${payment.status}</p>
+                ${payment.notes ? `<p><strong>Notes:</strong> ${payment.notes}</p>` : ''}
+              </div>
+            </div>
+
+            <table class="items-table">
               <thead>
                 <tr>
-                  <th>Tenant</th>
+                  <th>Description</th>
                   <th>Monthly Rent</th>
                   <th>Paid Amount</th>
                   <th>Balance</th>
-                  <th>Status</th>
-                  <th>Payment Date</th>
-                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
-                ${filteredPayments.map((payment) => `
-                  <tr>
-                    <td>${payment.tenant?.name || "N/A"}</td>
-                    <td>$${payment.monthlyRent.toLocaleString()}</td>
-                    <td>$${payment.paidAmount.toLocaleString()}</td>
-                    <td>$${payment.balance.toLocaleString()}</td>
-                    <td>${payment.status}</td>
-                    <td>${dayjs(payment.paymentDate).format("YYYY-MM-DD")}</td>
-                    <td>${payment.notes || ""}</td>
-                  </tr>
-                `).join("")}
+                <tr>
+                  <td>Rent Payment</td>
+                  <td>$${payment.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${payment.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>$${payment.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
               </tbody>
             </table>
-          </body>
-        </html>
-      `;
-    }
 
-    printWindow.document.write(tableHTML);
+            <div class="total-section">
+              <div class="total-row">
+                <label>Monthly Rent:</label>
+                <span>$${payment.monthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Amount Paid:</label>
+                <span class="grand-total">$${payment.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div class="total-row">
+                <label>Remaining Balance:</label>
+                <span style="color: ${payment.balance > 0 ? '#dc2626' : '#10b981'}">$${payment.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Thank you for your payment!</p>
+              <p>Generated on ${dayjs().format("MMMM DD, YYYY [at] HH:mm")}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(invoiceHTML);
     printWindow.document.close();
-    printWindow.print();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  // Print all invoices
+  const printAllInvoices = () => {
+    if (activeTab === "rent") {
+      filteredRents.forEach((rent, index) => {
+        setTimeout(() => {
+          printRentInvoice(rent);
+        }, index * 1000);
+      });
+    } else {
+      filteredPayments.forEach((payment, index) => {
+        setTimeout(() => {
+          printPaymentInvoice(payment);
+        }, index * 1000);
+      });
+    }
   };
 
   // Export to PDF
@@ -472,9 +842,9 @@ export default function ReportsPage() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Export Excel
           </Button>
-          <Button onClick={printTable} variant="outline">
+          <Button onClick={printAllInvoices} variant="outline">
             <Printer className="mr-2 h-4 w-4" />
-            Print
+            Print All Invoices
           </Button>
           <Button onClick={exportToPDF} variant="outline">
             <FileText className="mr-2 h-4 w-4" />
@@ -699,12 +1069,13 @@ export default function ReportsPage() {
                     <TableHead>Total Rent</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredRents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground">
                         No records found
                       </TableCell>
                     </TableRow>
@@ -733,6 +1104,16 @@ export default function ReportsPage() {
                           </TableCell>
                           <TableCell>{dayjs(rent.startDate).format("MMM DD, YYYY")}</TableCell>
                           <TableCell>{dayjs(rent.endDate).format("MMM DD, YYYY")}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => printRentInvoice(rent)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -765,12 +1146,13 @@ export default function ReportsPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Payment Date</TableHead>
                     <TableHead>Notes</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredPayments.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground">
                         No records found
                       </TableCell>
                     </TableRow>
@@ -810,6 +1192,16 @@ export default function ReportsPage() {
                         <TableCell>{dayjs(payment.paymentDate).format("MMM DD, YYYY")}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {payment.notes || "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => printPaymentInvoice(payment)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
