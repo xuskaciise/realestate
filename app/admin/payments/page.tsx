@@ -229,7 +229,7 @@ export default function PaymentsPage() {
       // Reset monthly rent when tenant is cleared
       setPaymentForm((prev) => ({ ...prev, monthlyRent: 0 }));
     }
-  }, [paymentForm.tenantId, paymentForm.monthlyRent, rents]);
+  }, [paymentForm.tenantId, rents]);
 
 
   const fetchPayments = async () => {
@@ -360,10 +360,10 @@ export default function PaymentsPage() {
 
     try {
       // For rent-only payments, ensure monthlyServiceId is not included
-      const formData = { ...paymentForm };
-      if (!formData.monthlyServiceId || formData.monthlyServiceId === "") {
-        delete formData.monthlyServiceId;
-      }
+      const { monthlyServiceId, ...restFormData } = paymentForm;
+      const formData = (!monthlyServiceId || monthlyServiceId === "") 
+        ? restFormData 
+        : { ...restFormData, monthlyServiceId };
       const validated = paymentSchema.parse(formData);
 
       if (editingPayment) {
