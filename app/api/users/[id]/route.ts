@@ -92,6 +92,13 @@ export async function PUT(
       { new: true, runValidators: true }
     ).select("-password").lean();
 
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({
       ...user,
       id: user._id.toString(),

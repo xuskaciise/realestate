@@ -22,16 +22,15 @@ const RoomSchema: Schema = new Schema(
   }
 );
 
-RoomSchema.virtual('id').get(function () {
-  return this._id.toHexString();
+RoomSchema.virtual('id').get(function (this: Document) {
+  return (this as any)._id.toHexString();
 });
 
 RoomSchema.set('toJSON', {
   virtuals: true,
-  transform: function (doc, ret) {
-    delete ret._id;
-    delete ret.__v;
-    return ret;
+  transform: function (doc, ret: any) {
+    const { _id, __v, ...result } = ret;
+    return result;
   },
 });
 

@@ -22,16 +22,15 @@ const TenantSchema: Schema = new Schema(
   }
 );
 
-TenantSchema.virtual('id').get(function () {
-  return this._id.toHexString();
+TenantSchema.virtual('id').get(function (this: Document) {
+  return (this as any)._id.toHexString();
 });
 
 TenantSchema.set('toJSON', {
   virtuals: true,
-  transform: function (doc, ret) {
-    delete ret._id;
-    delete ret.__v;
-    return ret;
+  transform: function (doc, ret: any) {
+    const { _id, __v, ...result } = ret;
+    return result;
   },
 });
 

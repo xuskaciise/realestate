@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
 
     const savedUser = await user.save();
     const userJson = savedUser.toJSON();
-    delete userJson.password;
+    const { password, ...userWithoutPassword } = userJson;
 
-    return NextResponse.json(userJson, { status: 201 });
+    return NextResponse.json(userWithoutPassword, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

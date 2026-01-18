@@ -465,8 +465,7 @@ export default function RentsPage() {
                     setRentForm({ ...rentForm, roomId: value });
                     // Clear error immediately when a value is selected
                     if (value && rentErrors.roomId) {
-                      const newErrors = { ...rentErrors };
-                      delete newErrors.roomId;
+                      const { roomId, ...newErrors } = rentErrors;
                       setRentErrors(newErrors);
                     }
                   }}
@@ -498,8 +497,7 @@ export default function RentsPage() {
                     setRentForm({ ...rentForm, tenantId: value });
                     // Clear error immediately when a value is selected
                     if (value && rentErrors.tenantId) {
-                      const newErrors = { ...rentErrors };
-                      delete newErrors.tenantId;
+                      const { tenantId, ...newErrors } = rentErrors;
                       setRentErrors(newErrors);
                     }
                   }}

@@ -21,17 +21,16 @@ const HouseSchema: Schema = new Schema(
 );
 
 // Create virtual id field
-HouseSchema.virtual('id').get(function () {
-  return this._id.toHexString();
+HouseSchema.virtual('id').get(function (this: Document) {
+  return (this as any)._id.toHexString();
 });
 
 // Ensure virtual fields are serialized
 HouseSchema.set('toJSON', {
   virtuals: true,
-  transform: function (doc, ret) {
-    delete ret._id;
-    delete ret.__v;
-    return ret;
+  transform: function (doc, ret: any) {
+    const { _id, __v, ...result } = ret;
+    return result;
   },
 });
 

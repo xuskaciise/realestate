@@ -52,6 +52,7 @@ const userSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   type: z.string().min(1, "User type is required"),
   status: z.string().min(1, "Status is required"),
+  profile: z.string().optional(),
 });
 
 type User = {
@@ -124,15 +125,15 @@ export default function UsersPage() {
         const validated = userSchema.parse({
           ...userForm,
           password: userForm.password || undefined,
-          profile: userForm.profile || undefined,
         });
 
+        const userId = editingUser.id;
         const updatedUsers = users.map((u) =>
-          u.id === editingUser.id
+          u.id === userId
             ? {
                 ...u,
                 ...validated,
-                profile: validated.profile || u.profile || null,
+                profile: userForm.profile || u.profile || null,
                 updatedAt: new Date().toISOString(),
               }
             : u
@@ -140,7 +141,7 @@ export default function UsersPage() {
         setUsers(updatedUsers);
 
         try {
-          await fetch(`/api/users/${editingUser.id}`, {
+          await fetch(`/api/users/${userId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),

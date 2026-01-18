@@ -179,7 +179,7 @@ export default function PaymentsPage() {
     // Find all previous payments for this tenant with same monthlyRent (rent payments only)
     let previousPaidAmount = 0;
     if (paymentForm.tenantId) {
-      const previousPayments = payments.filter((p) => {
+      const previousPayments = payments.filter((p: Payment) => {
         if (p.tenantId !== paymentForm.tenantId) return false;
         // Only count rent payments (no monthlyServiceId) with same monthlyRent
         return !p.monthlyServiceId && p.monthlyRent === paymentForm.monthlyRent;
@@ -229,7 +229,7 @@ export default function PaymentsPage() {
       // Reset monthly rent when tenant is cleared
       setPaymentForm((prev) => ({ ...prev, monthlyRent: 0 }));
     }
-  }, [paymentForm.tenantId, rents]);
+  }, [paymentForm.tenantId, paymentForm.monthlyRent, rents]);
 
 
   const fetchPayments = async () => {
@@ -290,7 +290,7 @@ export default function PaymentsPage() {
     // Find all previous payments for this tenant with same monthlyRent (rent payments only)
     let previousPaidAmount = 0;
     if (paymentForm.tenantId) {
-      const previousPayments = payments.filter((p) => {
+      const previousPayments = payments.filter((p: Payment) => {
         if (p.tenantId !== paymentForm.tenantId) return false;
         if (editingPayment && p.id === editingPayment.id) return false; // Exclude current payment if editing
         // Only count rent payments (no monthlyServiceId) with same monthlyRent
@@ -481,7 +481,7 @@ export default function PaymentsPage() {
   const confirmDeletePayment = async () => {
     if (!paymentToDelete) return;
 
-    const updatedPayments = payments.filter((p) => p.id !== paymentToDelete);
+    const updatedPayments = payments.filter((p: Payment) => p.id !== paymentToDelete);
     setPayments(updatedPayments);
 
     try {
@@ -1134,7 +1134,7 @@ export default function PaymentsPage() {
                       // Calculate previous payments (rent payments only)
                       let previousPaidAmount = 0;
                       if (paymentForm.tenantId) {
-                        const previousPayments = payments.filter((p) => {
+                        const previousPayments = payments.filter((p: Payment) => {
                           if (p.tenantId !== paymentForm.tenantId) return false;
                           if (editingPayment && p.id === editingPayment.id) return false; // Exclude current if editing
                           // Only count rent payments (no monthlyServiceId) with same monthlyRent
