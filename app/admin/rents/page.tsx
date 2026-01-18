@@ -243,11 +243,14 @@ export default function RentsPage() {
     }
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
-  const handleContractUploadComplete = (res: { url: string; key: string }[]) => {
-    if (res && res[0]) {
-      const fileUrl = res[0].url;
+  const handleContractUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
+    if (res && res.length > 0 && res[0]) {
+      const file = res[0];
+      const fileUrl = file.url;
+      const fileKey = file.key;
       setRentForm({ ...rentForm, contract: fileUrl });
       setUploadingContract(false);
+      console.log("Contract upload successful:", { url: fileUrl, key: fileKey });
     }
   };
 
@@ -696,11 +699,20 @@ export default function RentsPage() {
 
             <div className="space-y-2">
               <Label htmlFor="rent-contract">Contract Document</Label>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-2">
                 {rentForm.contract && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 text-sm text-green-600">
                     <FileText className="h-4 w-4" />
-                    <span>Contract uploaded</span>
+                    <span>✓ Contract uploaded successfully</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleViewContract(rentForm.contract!)}
+                      className="h-6 px-2 text-xs"
+                    >
+                      View
+                    </Button>
                   </div>
                 )}
                 <UploadButton
@@ -708,9 +720,13 @@ export default function RentsPage() {
                   onClientUploadComplete={handleContractUploadComplete}
                   onUploadError={handleContractUploadError}
                   onUploadBegin={handleContractUploadBegin}
+                  content={{
+                    button: "Choose PDF",
+                    allowedContent: "PDF (4MB max)",
+                  }}
                 />
                 {uploadingContract && (
-                  <p className="text-sm text-muted-foreground">Uploading...</p>
+                  <p className="text-sm text-muted-foreground">Uploading contract...</p>
                 )}
               </div>
             </div>
@@ -738,7 +754,7 @@ export default function RentsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={uploadingContract}>
+              <Button type="submit">
                 {editingRent ? "Update Rent" : "Create Rent"}
               </Button>
             </DialogFooter>

@@ -246,12 +246,15 @@ export default function UsersPage() {
     setOpenUserModal(true);
   };
 
-  const handleUploadComplete = (res: { url: string; key: string }[]) => {
-    if (res && res[0]) {
-      const fileUrl = res[0].url;
+  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
+    if (res && res.length > 0 && res[0]) {
+      const file = res[0];
+      const fileUrl = file.url;
+      const fileKey = file.key;
       setUserForm({ ...userForm, profile: fileUrl });
       setPreviewImage(fileUrl);
       setUploadingImage(false);
+      console.log("Upload successful:", { url: fileUrl, key: fileKey });
       addToast({
         type: "success",
         title: "Image Uploaded",
@@ -562,13 +565,17 @@ export default function UsersPage() {
                       onClientUploadComplete={handleUploadComplete}
                       onUploadError={handleUploadError}
                       onUploadBegin={handleUploadBegin}
+                      content={{
+                        button: "Choose Image",
+                        allowedContent: "Image (2MB max)",
+                      }}
                     />
                     {uploadingImage && (
                       <p className="text-xs text-muted-foreground mt-1">Uploading...</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Max size: 5MB. Supported formats: JPG, PNG, GIF, WebP
-                    </p>
+                    {previewImage && !uploadingImage && (
+                      <p className="text-xs text-green-600 mt-1">✓ Image uploaded successfully</p>
+                    )}
                   </div>
                 </div>
               </div>

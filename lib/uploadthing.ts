@@ -1,3 +1,5 @@
+"use client";
+
 import {
   generateUploadButton,
   generateUploadDropzone,
@@ -5,11 +7,13 @@ import {
 
 import type { OurFileRouter } from "@/app/api/uploadthing/core";
 
-// UploadThing client components - automatically reads UPLOADTHING_APP_ID from env
+// UploadThing client components
+// These automatically connect to /api/uploadthing route
+// Make sure UPLOADTHING_APP_ID is set in your environment (or NEXT_PUBLIC_UPLOADTHING_APP_ID for client access)
 export const UploadButton = generateUploadButton<OurFileRouter>({
-  url: "/api/uploadthing",
+  url: typeof window !== "undefined" ? `${window.location.origin}/api/uploadthing` : "/api/uploadthing",
 });
 
 export const UploadDropzone = generateUploadDropzone<OurFileRouter>({
-  url: "/api/uploadthing",
+  url: typeof window !== "undefined" ? `${window.location.origin}/api/uploadthing` : "/api/uploadthing",
 });

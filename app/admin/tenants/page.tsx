@@ -101,12 +101,15 @@ export default function TenantsPage() {
     fetchTenants();
   }, [fetchTenants]);
 
-  const handleUploadComplete = (res: { url: string; key: string }[]) => {
-    if (res && res[0]) {
-      const fileUrl = res[0].url;
+  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
+    if (res && res.length > 0 && res[0]) {
+      const file = res[0];
+      const fileUrl = file.url;
+      const fileKey = file.key;
       setTenantForm({ ...tenantForm, profile: fileUrl });
       setPreviewImage(fileUrl);
       setUploadingImage(false);
+      console.log("Upload successful:", { url: fileUrl, key: fileKey });
     }
   };
 
@@ -361,9 +364,16 @@ export default function TenantsPage() {
                     onClientUploadComplete={handleUploadComplete}
                     onUploadError={handleUploadError}
                     onUploadBegin={handleUploadBegin}
+                    content={{
+                      button: "Choose Image",
+                      allowedContent: "Image (2MB max)",
+                    }}
                   />
                   {uploadingImage && (
                     <p className="text-sm text-muted-foreground mt-1">Uploading...</p>
+                  )}
+                  {previewImage && !uploadingImage && (
+                    <p className="text-sm text-green-600 mt-1">✓ Image uploaded successfully</p>
                   )}
                 </div>
               </div>
@@ -382,7 +392,7 @@ export default function TenantsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={uploadingImage}>
+              <Button type="submit">
                 {editingTenant ? "Update Tenant" : "Create Tenant"}
               </Button>
             </DialogFooter>
