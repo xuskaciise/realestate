@@ -28,6 +28,7 @@ import dayjs from "dayjs";
 import { Receipt, Plus, Trash2, Edit, FileText, Download, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
+import { UploadButton } from "@/lib/uploadthing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -212,6 +213,7 @@ export default function RentsPage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
   // Calculate total rent when monthly rent or months change
@@ -241,93 +243,27 @@ export default function RentsPage() {
     }
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
-  const handleContractUpload = async (file: File) => {
-    try {
-      setUploadingContract(true);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/rents/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Use base64 if available, otherwise use fileName
-        const contractValue = data.base64 || data.fileName;
-        setRentForm({ ...rentForm, contract: contractValue });
-        return contractValue;
-      } else {
-        throw new Error("Upload failed");
-      }
-    } catch (error) {
-      console.error("Error uploading contract:", error);
-      alert("Failed to upload contract. Please try again.");
-      return null;
-    } finally {
+  const handleContractUploadComplete = (res: { url: string; key: string }[]) => {
+    if (res && res[0]) {
+      const fileUrl = res[0].url;
+      setRentForm({ ...rentForm, contract: fileUrl });
       setUploadingContract(false);
     }
   };
 
-  const handleViewContract = (contract: string) => {
-    if (contract.startsWith('data:')) {
-      // Handle base64 data URL - convert to blob and open
-      try {
-        // Extract base64 data and mime type
-        const matches = contract.match(/^data:([^;]+);base64,(.+)$/);
-        if (matches) {
-          const mimeType = matches[1];
-          const base64Data = matches[2];
-          
-          // Convert base64 to binary
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: mimeType });
-          
-          // Create blob URL and open
-          const blobUrl = URL.createObjectURL(blob);
-          const newWindow = window.open(blobUrl, '_blank');
-          
-          // Clean up blob URL after a delay (when window is closed)
-          if (newWindow) {
-            newWindow.addEventListener('beforeunload', () => {
-              URL.revokeObjectURL(blobUrl);
-            });
-          } else {
-            // If popup blocked, try direct download
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = 'contract.pdf';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-          }
-        } else {
-          // Fallback: try opening data URL directly
-          window.open(contract, '_blank');
-        }
-      } catch (error) {
-        console.error('Error viewing contract:', error);
-        alert('Failed to open contract. Please try again.');
-      }
-    } else {
-      // Handle file path
-      const url = contract.startsWith('/') ? contract : `/uploads/contracts/${contract}`;
-      window.open(url, '_blank');
-    }
+  const handleContractUploadError = (error: Error) => {
+    console.error("Error uploading contract:", error);
+    alert("Failed to upload contract. Please try again.");
+    setUploadingContract(false);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await handleContractUpload(file);
-    }
+  const handleContractUploadBegin = () => {
+    setUploadingContract(true);
+  };
+
+  const handleViewContract = (contract: string) => {
+    // Contract is now always a URL from UploadThing
+    window.open(contract, '_blank');
   };
 
   const handleRentSubmit = async (e: React.FormEvent) => {
@@ -767,13 +703,11 @@ export default function RentsPage() {
                     <span>Contract uploaded</span>
                   </div>
                 )}
-                <Input
-                  id="rent-contract"
-                  type="file"
-                  accept="image/*,.pdf,.doc,.docx"
-                  onChange={handleFileChange}
-                  disabled={uploadingContract}
-                  className="cursor-pointer"
+                <UploadButton
+                  endpoint="rentContract"
+                  onClientUploadComplete={handleContractUploadComplete}
+                  onUploadError={handleContractUploadError}
+                  onUploadBegin={handleContractUploadBegin}
                 />
                 {uploadingContract && (
                   <p className="text-sm text-muted-foreground">Uploading...</p>
@@ -869,11 +803,7 @@ export default function RentsPage() {
                             return (
                               <Avatar className="h-6 w-6">
                                 <AvatarImage 
-                                  src={rentTenant.profile?.startsWith('data:') 
-                                    ? rentTenant.profile 
-                                    : rentTenant.profile?.startsWith('/') 
-                                    ? rentTenant.profile 
-                                    : `/uploads/tenants/${rentTenant.profile}`} 
+                                  src={rentTenant.profile || undefined} 
                                   alt={rentTenant.name} 
                                 />
                                 <AvatarFallback className="text-xs">

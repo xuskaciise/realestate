@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
+import { UploadButton } from "@/lib/uploadthing";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -245,70 +246,32 @@ export default function UsersPage() {
     setOpenUserModal(true);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      addToast({
-        type: "danger",
-        title: "Invalid File",
-        message: "Please select an image file.",
-      });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      addToast({
-        type: "danger",
-        title: "File Too Large",
-        message: "Image size must be less than 5MB.",
-      });
-      return;
-    }
-
-    setUploadingImage(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/users/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Use base64 if available, otherwise use path
-        const profileValue = data.base64 || data.path;
-        setUserForm({ ...userForm, profile: profileValue });
-        setPreviewImage(profileValue);
-        addToast({
-          type: "success",
-          title: "Image Uploaded",
-          message: "Profile image has been uploaded successfully.",
-        });
-      } else {
-        const error = await response.json();
-        addToast({
-          type: "danger",
-          title: "Upload Failed",
-          message: error.error || "Failed to upload image.",
-        });
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      addToast({
-        type: "danger",
-        title: "Upload Error",
-        message: "An error occurred while uploading the image.",
-      });
-    } finally {
+  const handleUploadComplete = (res: { url: string; key: string }[]) => {
+    if (res && res[0]) {
+      const fileUrl = res[0].url;
+      setUserForm({ ...userForm, profile: fileUrl });
+      setPreviewImage(fileUrl);
       setUploadingImage(false);
+      addToast({
+        type: "success",
+        title: "Image Uploaded",
+        message: "Profile image has been uploaded successfully.",
+      });
     }
+  };
+
+  const handleUploadError = (error: Error) => {
+    console.error("Error uploading image:", error);
+    addToast({
+      type: "danger",
+      title: "Upload Error",
+      message: "An error occurred while uploading the image.",
+    });
+    setUploadingImage(false);
+  };
+
+  const handleUploadBegin = () => {
+    setUploadingImage(true);
   };
 
   const handleDeleteUser = (id: string) => {
@@ -448,13 +411,7 @@ export default function UsersPage() {
                       <TableCell>
                         <Avatar>
                           <AvatarImage 
-                            src={user.profile 
-                              ? (user.profile.startsWith('data:') 
-                                ? user.profile 
-                                : user.profile.startsWith('/') 
-                                ? user.profile 
-                                : `/uploads/users/${user.profile}`)
-                              : undefined} 
+                            src={user.profile || undefined} 
                             alt={user.fullname || user.username} 
                           />
                           <AvatarFallback>
@@ -587,11 +544,7 @@ export default function UsersPage() {
                     {previewImage ? (
                       <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-gray-200">
                         <Image
-                          src={previewImage.startsWith('data:') 
-                            ? previewImage 
-                            : previewImage.startsWith('/') 
-                            ? previewImage 
-                            : `/uploads/users/${previewImage}`}
+                          src={previewImage}
                           alt="Profile preview"
                           fill
                           className="object-cover"
@@ -604,13 +557,11 @@ export default function UsersPage() {
                     )}
                   </div>
                   <div className="flex-1">
-                    <Input
-                      id="user-profile"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      disabled={uploadingImage}
-                      className="cursor-pointer"
+                    <UploadButton
+                      endpoint="userImage"
+                      onClientUploadComplete={handleUploadComplete}
+                      onUploadError={handleUploadError}
+                      onUploadBegin={handleUploadBegin}
                     />
                     {uploadingImage && (
                       <p className="text-xs text-muted-foreground mt-1">Uploading...</p>

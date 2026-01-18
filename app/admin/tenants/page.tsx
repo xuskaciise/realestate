@@ -28,6 +28,7 @@ import dayjs from "dayjs";
 import { User, Plus, Trash2, Edit, Upload, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
+import { UploadButton } from "@/lib/uploadthing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,49 +101,23 @@ export default function TenantsPage() {
     fetchTenants();
   }, [fetchTenants]);
 
-  const handleImageUpload = async (file: File) => {
-    try {
-      setUploadingImage(true);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/tenants/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Use base64 if available, otherwise use fileName
-        const profileValue = data.base64 || data.fileName;
-        setTenantForm({ ...tenantForm, profile: profileValue });
-        setPreviewImage(profileValue);
-        return profileValue;
-      } else {
-        throw new Error("Upload failed");
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Failed to upload image. Please try again.");
-      return null;
-    } finally {
+  const handleUploadComplete = (res: { url: string; key: string }[]) => {
+    if (res && res[0]) {
+      const fileUrl = res[0].url;
+      setTenantForm({ ...tenantForm, profile: fileUrl });
+      setPreviewImage(fileUrl);
       setUploadingImage(false);
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handleUploadError = (error: Error) => {
+    console.error("Error uploading image:", error);
+    alert("Failed to upload image. Please try again.");
+    setUploadingImage(false);
+  };
 
-      // Upload file
-      await handleImageUpload(file);
-    }
+  const handleUploadBegin = () => {
+    setUploadingImage(true);
   };
 
   const handleTenantSubmit = async (e: React.FormEvent) => {
@@ -373,11 +348,7 @@ export default function TenantsPage() {
                 {previewImage && (
                   <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200">
                     <Image
-                      src={previewImage.startsWith('data:') 
-                        ? previewImage 
-                        : previewImage.startsWith('/') 
-                        ? previewImage 
-                        : `/uploads/tenants/${previewImage}`}
+                      src={previewImage}
                       alt="Profile preview"
                       fill
                       className="object-cover"
@@ -385,13 +356,11 @@ export default function TenantsPage() {
                   </div>
                 )}
                 <div className="flex-1">
-                  <Input
-                    id="tenant-profile"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    disabled={uploadingImage}
-                    className="cursor-pointer"
+                  <UploadButton
+                    endpoint="tenantImage"
+                    onClientUploadComplete={handleUploadComplete}
+                    onUploadError={handleUploadError}
+                    onUploadBegin={handleUploadBegin}
                   />
                   {uploadingImage && (
                     <p className="text-sm text-muted-foreground mt-1">Uploading...</p>
@@ -453,13 +422,7 @@ export default function TenantsPage() {
                     <TableCell>
                       <Avatar>
                         <AvatarImage 
-                          src={tenant.profile 
-                            ? (tenant.profile.startsWith('data:') 
-                              ? tenant.profile 
-                              : tenant.profile.startsWith('/') 
-                              ? tenant.profile 
-                              : `/uploads/tenants/${tenant.profile}`)
-                            : undefined} 
+                          src={tenant.profile || undefined} 
                           alt={tenant.name} 
                         />
                         <AvatarFallback>
