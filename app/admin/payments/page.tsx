@@ -873,7 +873,11 @@ export default function PaymentsPage() {
                           {payment.tenant?.profile && (
                             <Avatar className="h-6 w-6">
                               <AvatarImage
-                                src={payment.tenant.profile.startsWith('/') ? payment.tenant.profile : `/uploads/tenants/${payment.tenant.profile}`}
+                                src={payment.tenant.profile?.startsWith('data:') 
+                                  ? payment.tenant.profile 
+                                  : payment.tenant.profile?.startsWith('/') 
+                                  ? payment.tenant.profile 
+                                  : `/uploads/tenants/${payment.tenant.profile}`}
                                 alt={payment.tenant.name}
                               />
                               <AvatarFallback className="text-xs">

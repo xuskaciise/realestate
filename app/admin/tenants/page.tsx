@@ -113,9 +113,11 @@ export default function TenantsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setTenantForm({ ...tenantForm, profile: data.fileName });
-        setPreviewImage(data.fileName);
-        return data.fileName;
+        // Use base64 if available, otherwise use fileName
+        const profileValue = data.base64 || data.fileName;
+        setTenantForm({ ...tenantForm, profile: profileValue });
+        setPreviewImage(profileValue);
+        return profileValue;
       } else {
         throw new Error("Upload failed");
       }
@@ -371,7 +373,11 @@ export default function TenantsPage() {
                 {previewImage && (
                   <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200">
                     <Image
-                      src={previewImage.startsWith('/') ? previewImage : `/uploads/tenants/${previewImage}`}
+                      src={previewImage.startsWith('data:') 
+                        ? previewImage 
+                        : previewImage.startsWith('/') 
+                        ? previewImage 
+                        : `/uploads/tenants/${previewImage}`}
                       alt="Profile preview"
                       fill
                       className="object-cover"
@@ -447,7 +453,13 @@ export default function TenantsPage() {
                     <TableCell>
                       <Avatar>
                         <AvatarImage 
-                          src={tenant.profile ? (tenant.profile.startsWith('/') ? tenant.profile : `/uploads/tenants/${tenant.profile}`) : undefined} 
+                          src={tenant.profile 
+                            ? (tenant.profile.startsWith('data:') 
+                              ? tenant.profile 
+                              : tenant.profile.startsWith('/') 
+                              ? tenant.profile 
+                              : `/uploads/tenants/${tenant.profile}`)
+                            : undefined} 
                           alt={tenant.name} 
                         />
                         <AvatarFallback>

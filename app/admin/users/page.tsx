@@ -282,8 +282,10 @@ export default function UsersPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setUserForm({ ...userForm, profile: data.path });
-        setPreviewImage(data.path);
+        // Use base64 if available, otherwise use path
+        const profileValue = data.base64 || data.path;
+        setUserForm({ ...userForm, profile: profileValue });
+        setPreviewImage(profileValue);
         addToast({
           type: "success",
           title: "Image Uploaded",
@@ -446,7 +448,13 @@ export default function UsersPage() {
                       <TableCell>
                         <Avatar>
                           <AvatarImage 
-                            src={user.profile ? (user.profile.startsWith('/') ? user.profile : `/uploads/users/${user.profile}`) : undefined} 
+                            src={user.profile 
+                              ? (user.profile.startsWith('data:') 
+                                ? user.profile 
+                                : user.profile.startsWith('/') 
+                                ? user.profile 
+                                : `/uploads/users/${user.profile}`)
+                              : undefined} 
                             alt={user.fullname || user.username} 
                           />
                           <AvatarFallback>
@@ -579,7 +587,11 @@ export default function UsersPage() {
                     {previewImage ? (
                       <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-gray-200">
                         <Image
-                          src={previewImage.startsWith('/') ? previewImage : `/uploads/users/${previewImage}`}
+                          src={previewImage.startsWith('data:') 
+                            ? previewImage 
+                            : previewImage.startsWith('/') 
+                            ? previewImage 
+                            : `/uploads/users/${previewImage}`}
                           alt="Profile preview"
                           fill
                           className="object-cover"

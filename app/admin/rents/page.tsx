@@ -806,7 +806,11 @@ export default function RentsPage() {
                             return (
                               <Avatar className="h-6 w-6">
                                 <AvatarImage 
-                                  src={rentTenant.profile.startsWith('/') ? rentTenant.profile : `/uploads/tenants/${rentTenant.profile}`} 
+                                  src={rentTenant.profile?.startsWith('data:') 
+                                    ? rentTenant.profile 
+                                    : rentTenant.profile?.startsWith('/') 
+                                    ? rentTenant.profile 
+                                    : `/uploads/tenants/${rentTenant.profile}`} 
                                   alt={rentTenant.name} 
                                 />
                                 <AvatarFallback className="text-xs">

@@ -25,38 +25,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Validate file size (max 2MB for base64)
+    const maxSize = 2 * 1024 * 1024; // 2MB
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: "File size exceeds 5MB limit." },
+        { error: "File size exceeds 2MB limit." },
         { status: 400 }
       );
     }
 
-    // Generate unique filename
-    const fileExtension = file.name.split(".").pop();
-    const fileName = `${uuidv4()}.${fileExtension}`;
-
-    // Create uploads/users directory if it doesn't exist
-    const uploadDir = join(process.cwd(), "public", "uploads", "users");
-    if (!existsSync(uploadDir)) {
-      mkdirSync(uploadDir, { recursive: true });
-    }
-
-    // Save file
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const filePath = join(uploadDir, fileName);
-    await writeFile(filePath, buffer);
+    
+    // Convert to base64
+    const base64Image = buffer.toString('base64');
+    const dataUrl = `data:${file.type};base64,${base64Image}`;
 
-    // Return the file path relative to public folder
-    const publicPath = `/uploads/users/${fileName}`;
+    // Try to save to filesystem in development, but always return base64 for production compatibility
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+    
+    if (!isProduction) {
+      // In development, also save to filesystem
+      try {
+        const fileExtension = file.name.split(".").pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
 
+        // Create uploads/users directory if it doesn't exist
+        const uploadDir = join(process.cwd(), "public", "uploads", "users");
+        if (!existsSync(uploadDir)) {
+          mkdirSync(uploadDir, { recursive: true });
+        }
+
+        const filePath = join(uploadDir, fileName);
+        await writeFile(filePath, buffer);
+
+        // Return the file path relative to public folder
+        const publicPath = `/uploads/users/${fileName}`;
+
+        return NextResponse.json({
+          success: true,
+          path: publicPath,
+          fileName: fileName,
+          base64: dataUrl, // Also return base64 for consistency
+        });
+      } catch (fsError) {
+        // If filesystem write fails, fall back to base64 only
+        console.warn("Filesystem write failed, using base64 only:", fsError);
+      }
+    }
+    
+    // Return base64 data (works in both dev and production)
     return NextResponse.json({
       success: true,
-      path: publicPath,
-      fileName: fileName,
+      path: dataUrl, // Store base64 data URL directly
+      fileName: dataUrl,
+      base64: dataUrl,
     });
   } catch (error) {
     console.error("Error uploading file:", error);

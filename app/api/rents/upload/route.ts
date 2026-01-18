@@ -16,26 +16,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uploadDir = join(process.cwd(), "public", "uploads", "contracts");
-    
-    // Create uploads directory if it doesn't exist
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
+    // Validate file size (max 5MB for contracts)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: "File size exceeds 5MB limit." },
+        { status: 400 }
+      );
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-
-    // Generate UUID for file name
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `${uuidv4()}.${fileExtension}`;
-    const filePath = join(uploadDir, fileName);
-
-    await writeFile(filePath, buffer);
     
+    // Convert to base64
+    const base64File = buffer.toString('base64');
+    const dataUrl = `data:${file.type};base64,${base64File}`;
+
+    // Try to save to filesystem in development, but always return base64 for production compatibility
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+    
+    if (!isProduction) {
+      // In development, also save to filesystem
+      try {
+        const uploadDir = join(process.cwd(), "public", "uploads", "contracts");
+        
+        if (!existsSync(uploadDir)) {
+          await mkdir(uploadDir, { recursive: true });
+        }
+
+        const fileExtension = file.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
+        const filePath = join(uploadDir, fileName);
+
+        await writeFile(filePath, buffer);
+        
+        return NextResponse.json({
+          message: "File uploaded successfully",
+          fileName: `/uploads/contracts/${fileName}`,
+          base64: dataUrl, // Also return base64 for consistency
+        });
+      } catch (fsError) {
+        // If filesystem write fails, fall back to base64 only
+        console.warn("Filesystem write failed, using base64 only:", fsError);
+      }
+    }
+    
+    // Return base64 data (works in both dev and production)
     return NextResponse.json({
       message: "File uploaded successfully",
-      fileName: `/uploads/contracts/${fileName}`,
+      fileName: dataUrl, // Store base64 data URL directly
+      base64: dataUrl,
     });
   } catch (error) {
     console.error("Upload error:", error);
