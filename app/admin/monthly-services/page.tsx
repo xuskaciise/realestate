@@ -731,12 +731,12 @@ export default function MonthlyServicesPage() {
       // Find all previous payments for this tenant and same service
       let previousPaidAmount = 0;
       if (paymentForm.tenantId) {
-        const previousPayments = payments.filter((p) => {
+        const previousPayments = payments.filter((p: Payment) => {
           if (p.tenantId !== paymentForm.tenantId) return false;
           return p.monthlyServiceId === paymentService.id;
         });
         
-        previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+        previousPaidAmount = previousPayments.reduce((sum, p: Payment) => sum + (p.paidAmount || 0), 0);
       }
 
       // Calculate balance: total due - (previous payments + current payment)
@@ -777,12 +777,12 @@ export default function MonthlyServicesPage() {
     // Find all previous payments for this tenant and same service
     let previousPaidAmount = 0;
     if (paymentForm.tenantId) {
-      const previousPayments = payments.filter((p) => {
+      const previousPayments = payments.filter((p: Payment) => {
         if (p.tenantId !== paymentForm.tenantId) return false;
         return p.monthlyServiceId === paymentService.id;
       });
       
-      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+      previousPaidAmount = previousPayments.reduce((sum, p: Payment) => sum + (p.paidAmount || 0), 0);
     }
 
     const totalPaidAmount = previousPaidAmount + paymentForm.paidAmount;
@@ -1884,11 +1884,11 @@ export default function MonthlyServicesPage() {
                     // Calculate previous payments
                     let previousPaidAmount = 0;
                     if (paymentForm.tenantId) {
-                      const previousPayments = payments.filter((p) => {
+                      const previousPayments = payments.filter((p: Payment) => {
                         if (p.tenantId !== paymentForm.tenantId) return false;
                         return p.monthlyServiceId === paymentService.id;
                       });
-                      previousPaidAmount = previousPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+                      previousPaidAmount = previousPayments.reduce((sum, p: Payment) => sum + (p.paidAmount || 0), 0);
                     }
                     
                     const remainingBalance = paymentService.totalAmount - previousPaidAmount;
