@@ -100,13 +100,20 @@ type Rent = {
   };
 };
 
+type Payment = {
+  id: string;
+  tenantId: string;
+  paidAmount: number;
+  monthlyServiceId?: string | null;
+};
+
 export default function MonthlyServicesPage() {
   const { addToast } = useToast();
   const router = useRouter();
   const [services, setServices] = useState<MonthlyService[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [rents, setRents] = useState<Rent[]>([]);
-  const [payments, setPayments] = useState<Array<{ id: string; tenantId: string; paidAmount: number; monthlyServiceId?: string | null }>>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; phone: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [openServiceModal, setOpenServiceModal] = useState(false);
@@ -1244,9 +1251,9 @@ export default function MonthlyServicesPage() {
             // Get existing payments for this tenant
             const paymentsResponse = await fetch("/api/payments");
             if (paymentsResponse.ok) {
-              const payments = await paymentsResponse.json();
+              const payments: Payment[] = await paymentsResponse.json();
               const tenantPayments = payments.filter(
-                (p) => p.tenantId === activeRent.tenantId
+                (p: Payment) => p.tenantId === activeRent.tenantId
               );
 
               // If there's a payment record, we could update it
