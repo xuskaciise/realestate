@@ -141,7 +141,26 @@ export default function RentsPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setRooms(data || []);
+        // Filter out rooms that have active rents
+        const today = dayjs();
+        const activeRentRoomIds = new Set(
+          rents
+            .filter((rent) => {
+              const startDate = dayjs(rent.startDate);
+              const endDate = dayjs(rent.endDate);
+              // Check if rent is currently active (today is between start and end date)
+              return (
+                (today.isAfter(startDate) || today.isSame(startDate, "day")) &&
+                (today.isBefore(endDate) || today.isSame(endDate, "day"))
+              );
+            })
+            .map((rent) => rent.roomId)
+        );
+        // Only show rooms that don't have active rents (or show all if editing)
+        const availableRooms = editingRent 
+          ? data 
+          : data.filter((room: Room) => !activeRentRoomIds.has(room.id));
+        setRooms(availableRooms || []);
       } else {
         setRooms([]);
       }
@@ -149,7 +168,7 @@ export default function RentsPage() {
       console.error("Error fetching rooms:", error);
       setRooms([]);
     }
-  }, []);
+  }, [rents, editingRent]);
 
   const fetchTenants = useCallback(async () => {
     try {
@@ -268,6 +287,7 @@ export default function RentsPage() {
           
           if (response.ok) {
             await fetchRents();
+            await fetchRooms(); // Refresh available rooms
           } else {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || "Failed to update rent");
@@ -303,6 +323,7 @@ export default function RentsPage() {
           
           if (response.ok) {
             await fetchRents();
+            await fetchRooms(); // Refresh available rooms
           } else {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || "Failed to create rent");
@@ -351,6 +372,7 @@ export default function RentsPage() {
       
       if (response.ok) {
         await fetchRents();
+        await fetchRooms(); // Refresh available rooms
       } else {
         throw new Error("Failed to delete rent");
       }

@@ -64,6 +64,32 @@ export async function PUT(
 
     await connectDB();
 
+    // Check if room has an active rent that overlaps with the updated rent period (excluding current rent)
+    const newStartDate = new Date(validated.startDate);
+    const newEndDate = new Date(validated.endDate);
+
+    const existingRents = await Rent.find({
+      roomId: validated.roomId,
+      _id: { $ne: params.id }, // Exclude the current rent being edited
+    }).lean();
+
+    // Check for overlapping rent periods
+    const hasOverlap = existingRents.some((existingRent) => {
+      const existingStart = new Date(existingRent.startDate);
+      const existingEnd = new Date(existingRent.endDate);
+      
+      // Check if the new rent period overlaps with any existing rent
+      // Overlap occurs if: newStart < existingEnd AND newEnd > existingStart
+      return newStartDate < existingEnd && newEndDate > existingStart;
+    });
+
+    if (hasOverlap) {
+      return NextResponse.json(
+        { error: "This room is already rented for the selected period. Please choose a different room or adjust the dates." },
+        { status: 400 }
+      );
+    }
+
     const rent = await Rent.findByIdAndUpdate(
       params.id,
       {
@@ -74,8 +100,8 @@ export async function PUT(
         monthlyRent: validated.monthlyRent,
         months: validated.months,
         totalRent: validated.totalRent,
-        startDate: new Date(validated.startDate),
-        endDate: new Date(validated.endDate),
+        startDate: newStartDate,
+        endDate: newEndDate,
         contract: validated.contract || null,
       },
       { new: true, runValidators: true }
