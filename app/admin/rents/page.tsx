@@ -272,8 +272,50 @@ export default function RentsPage() {
 
   const handleViewContract = (contract: string) => {
     if (contract.startsWith('data:')) {
-      // Handle base64 data URL - open directly in new window
-      window.open(contract, '_blank');
+      // Handle base64 data URL - convert to blob and open
+      try {
+        // Extract base64 data and mime type
+        const matches = contract.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          
+          // Convert base64 to binary
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: mimeType });
+          
+          // Create blob URL and open
+          const blobUrl = URL.createObjectURL(blob);
+          const newWindow = window.open(blobUrl, '_blank');
+          
+          // Clean up blob URL after a delay (when window is closed)
+          if (newWindow) {
+            newWindow.addEventListener('beforeunload', () => {
+              URL.revokeObjectURL(blobUrl);
+            });
+          } else {
+            // If popup blocked, try direct download
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = 'contract.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+          }
+        } else {
+          // Fallback: try opening data URL directly
+          window.open(contract, '_blank');
+        }
+      } catch (error) {
+        console.error('Error viewing contract:', error);
+        alert('Failed to open contract. Please try again.');
+      }
     } else {
       // Handle file path
       const url = contract.startsWith('/') ? contract : `/uploads/contracts/${contract}`;
