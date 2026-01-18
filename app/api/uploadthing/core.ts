@@ -1,10 +1,6 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 
-// Support both UPLOADTHING_SECRET (standard) and UPLOADTHING_TOKEN (custom)
-if (process.env.UPLOADTHING_TOKEN && !process.env.UPLOADTHING_SECRET) {
-  process.env.UPLOADTHING_SECRET = process.env.UPLOADTHING_TOKEN;
-}
-
+// UploadThing automatically reads UPLOADTHING_SECRET from environment variables
 const f = createUploadthing();
 
 export const ourFileRouter = {

@@ -5,6 +5,7 @@ import {
 
 import type { OurFileRouter } from "@/app/api/uploadthing/core";
 
+// UploadThing client components - automatically reads UPLOADTHING_APP_ID from env
 export const UploadButton = generateUploadButton<OurFileRouter>({
   url: "/api/uploadthing",
 });
