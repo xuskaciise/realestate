@@ -20,7 +20,11 @@ export async function GET() {
       .select("-password")
       .sort({ createdAt: -1 })
       .lean();
-    return NextResponse.json(users.map(u => ({ ...u, id: u._id.toString() })));
+    return NextResponse.json(users.map(u => ({ ...u, id: u._id.toString() })), {
+      headers: {
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
+      }
+    });
   } catch (error) {
     console.error("Error fetching users:", error);
     return NextResponse.json(

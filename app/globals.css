@@ -94,6 +94,44 @@
     animation: spin-gradient 1s linear infinite;
   }
 
+  /* UploadThing Button Styling */
+  [data-ut-element="button"] {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    color: white !important;
+    border: none !important;
+    padding: 0.75rem 1.5rem !important;
+    border-radius: 0.5rem !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3) !important;
+  }
+
+  [data-ut-element="button"]:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  [data-ut-element="button"]:active {
+    transform: translateY(0) !important;
+  }
+
+  /* UploadThing Dropzone Styling */
+  [data-ut-element="dropzone"] {
+    border: 2px dashed #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.05) !important;
+    border-radius: 0.75rem !important;
+    padding: 2rem !important;
+    transition: all 0.2s ease !important;
+  }
+
+  [data-ut-element="dropzone"]:hover {
+    border-color: #2563eb !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+  }
+
   /* Login Page Animations */
   @keyframes zoom-in-out {
     0%, 100% {

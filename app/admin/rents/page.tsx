@@ -25,10 +25,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { Receipt, Plus, Trash2, Edit, FileText, Download, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { Receipt, Plus, Trash2, Edit, FileText, Download, ChevronLeft, ChevronRight, Check, Upload } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
-import { UploadButton } from "@/lib/uploadthing";
+import { UploadButton, UploadDropzone } from "@/lib/uploadthing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -698,35 +698,67 @@ export default function RentsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rent-contract">Contract Document</Label>
-              <div className="flex flex-col gap-2">
-                {rentForm.contract && (
-                  <div className="flex items-center gap-2 text-sm text-green-600">
-                    <FileText className="h-4 w-4" />
-                    <span>✓ Contract uploaded successfully</span>
+              <Label htmlFor="rent-contract" className="text-base font-semibold">
+                Attach Documents
+              </Label>
+              <div className="flex flex-col gap-3">
+                {rentForm.contract ? (
+                  <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                      <FileText className="h-5 w-5" />
+                      <span className="font-medium">Contract uploaded successfully</span>
+                    </div>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => handleViewContract(rentForm.contract!)}
-                      className="h-6 px-2 text-xs"
+                      className="h-8 px-3 text-xs border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900"
                     >
-                      View
+                      <Download className="h-3 w-3 mr-1" />
+                      View Document
                     </Button>
                   </div>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-8 bg-white dark:bg-gray-900">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <Upload className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+                      <UploadDropzone
+                        endpoint="rentContract"
+                        onClientUploadComplete={handleContractUploadComplete}
+                        onUploadError={handleContractUploadError}
+                        onUploadBegin={handleContractUploadBegin}
+                        appearance={{
+                          button: "hidden",
+                          allowedContent: "hidden",
+                          container: "w-full",
+                          label: "hidden",
+                        }}
+                      />
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Drag and Drop here</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">or</p>
+                      <UploadButton
+                        endpoint="rentContract"
+                        onClientUploadComplete={handleContractUploadComplete}
+                        onUploadError={handleContractUploadError}
+                        onUploadBegin={handleContractUploadBegin}
+                        content={{
+                          button: "Browse files",
+                          allowedContent: "",
+                        }}
+                        appearance={{
+                          button: "ut-ready:bg-transparent ut-ready:text-blue-600 ut-uploading:bg-transparent ut-uploading:text-blue-400 ut-uploading:cursor-not-allowed bg-transparent text-blue-600 dark:text-blue-400 font-medium px-0 py-0 border-0 shadow-none hover:underline",
+                          allowedContent: "hidden",
+                        }}
+                      />
+                    </div>
+                  </div>
                 )}
-                <UploadButton
-                  endpoint="rentContract"
-                  onClientUploadComplete={handleContractUploadComplete}
-                  onUploadError={handleContractUploadError}
-                  onUploadBegin={handleContractUploadBegin}
-                  content={{
-                    button: "Choose PDF",
-                    allowedContent: "PDF (4MB max)",
-                  }}
-                />
                 {uploadingContract && (
-                  <p className="text-sm text-muted-foreground">Uploading contract...</p>
+                  <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                    <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Uploading contract document...</span>
+                  </div>
                 )}
               </div>
             </div>

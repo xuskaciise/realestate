@@ -9,6 +9,7 @@ export interface IPayment extends Document {
   status: string;
   paymentDate: Date;
   monthlyServiceId: string | null;
+  maintenanceRequestId: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -23,6 +24,7 @@ const PaymentSchema: Schema = new Schema(
     status: { type: String, required: true },
     paymentDate: { type: Date, required: true },
     monthlyServiceId: { type: String, default: null },
+    maintenanceRequestId: { type: String, default: null },
     notes: { type: String, default: null },
   },
   {

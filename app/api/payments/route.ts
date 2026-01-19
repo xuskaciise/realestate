@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongoose";
 import Payment from "@/lib/models/Payment";
 import Tenant from "@/lib/models/Tenant";
 import MonthlyService from "@/lib/models/MonthlyService";
+import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
 import { z } from "zod";
 
 const paymentSchema = z.object({
@@ -13,6 +14,7 @@ const paymentSchema = z.object({
   status: z.enum(["Paid", "Partial", "Pending", "Overdue"]),
   paymentDate: z.string().min(1, "Payment date is required"),
   monthlyServiceId: z.string().optional(),
+  maintenanceRequestId: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -38,7 +40,11 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json(paymentsWithTenant);
+    return NextResponse.json(paymentsWithTenant, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30'
+      }
+    });
   } catch (error) {
     console.error("Error fetching payments:", error);
     return NextResponse.json(
@@ -57,21 +63,28 @@ export async function POST(request: NextRequest) {
 
     // Calculate total due amount
     let totalDue = validated.monthlyRent;
-    if (validated.monthlyServiceId) {
+    if (validated.maintenanceRequestId) {
+      const maintenanceRequest = await MaintenanceRequest.findById(validated.maintenanceRequestId).lean();
+      if (maintenanceRequest) {
+        totalDue = maintenanceRequest.totalPrice;
+      }
+    } else if (validated.monthlyServiceId) {
       const service = await MonthlyService.findById(validated.monthlyServiceId).lean();
       if (service) {
         totalDue += service.totalAmount;
       }
     }
 
-    // Find all previous payments for this tenant (and same service if applicable)
+    // Find all previous payments for this tenant (and same service/maintenance request if applicable)
     const query: any = { tenantId: validated.tenantId };
-    if (validated.monthlyServiceId) {
+    if (validated.maintenanceRequestId) {
+      query.maintenanceRequestId = validated.maintenanceRequestId;
+    } else if (validated.monthlyServiceId) {
       query.monthlyServiceId = validated.monthlyServiceId;
     } else {
       // If no service, only count payments without service or with same monthlyRent
       query.$or = [
-        { monthlyServiceId: null },
+        { monthlyServiceId: null, maintenanceRequestId: null },
         { monthlyRent: validated.monthlyRent }
       ];
     }
@@ -106,6 +119,7 @@ export async function POST(request: NextRequest) {
       status: status,
       paymentDate: new Date(validated.paymentDate),
       monthlyServiceId: validated.monthlyServiceId || null,
+      maintenanceRequestId: validated.maintenanceRequestId || null,
       notes: validated.notes || null,
     });
 

@@ -8,14 +8,14 @@ interface LoadingSpinnerProps {
 export function LoadingSpinner({ size = "md", className }: LoadingSpinnerProps) {
   const sizeClasses = {
     sm: "h-6 w-6 border-2",
-    md: "h-12 w-12 border-[3px]",
-    lg: "h-16 w-16 border-4",
+    md: "h-12 w-12 border-b-2",
+    lg: "h-16 w-16 border-b-2",
   };
 
   return (
     <div
       className={cn(
-        "loading-spinner rounded-full",
+        "animate-spin rounded-full border-blue-600",
         sizeClasses[size],
         className
       )}
@@ -31,12 +31,14 @@ interface LoadingOverlayProps {
 export function LoadingOverlay({ message = "Loading...", size = "md" }: LoadingOverlayProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[200px] space-y-4">
-      <LoadingSpinner size={size} />
-      {message && (
-        <p className="text-muted-foreground font-medium text-sm animate-pulse">
-          {message}
-        </p>
-      )}
+      <div className="text-center">
+        <LoadingSpinner size={size} />
+        {message && (
+          <p className="mt-4 text-muted-foreground">
+            {message}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

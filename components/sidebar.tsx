@@ -12,6 +12,7 @@ import {
   BarChart3,
   Droplet,
   UserCog,
+  Wrench,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { cn } from "@/lib/utils";
@@ -38,24 +39,29 @@ const menuItems = [
     icon: Receipt,
   },
   {
-    title: "Reports",
-    href: "/admin/reports",
-    icon: BarChart3,
-  },
-  {
     title: "Monthly Services",
     href: "/admin/monthly-services",
     icon: Droplet,
   },
   {
-    title: "Users",
-    href: "/admin/users",
-    icon: UserCog,
-  },
-  {
     title: "Payments",
     href: "/admin/payments",
     icon: CreditCard,
+  },
+  {
+    title: "Maintenance",
+    href: "/admin/maintenance",
+    icon: Wrench,
+  },
+  {
+    title: "Reports",
+    href: "/admin/reports",
+    icon: BarChart3,
+  },
+  {
+    title: "Users",
+    href: "/admin/users",
+    icon: UserCog,
   },
 ];
 

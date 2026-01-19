@@ -56,7 +56,11 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json(servicesWithRelations);
+    return NextResponse.json(servicesWithRelations, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30'
+      }
+    });
   } catch (error) {
     console.error("Error fetching monthly services:", error);
     return NextResponse.json(

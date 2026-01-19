@@ -72,6 +72,28 @@ export default function TenantsPage() {
 
   const [tenantErrors, setTenantErrors] = useState<Record<string, string>>({});
 
+  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
+    if (res && res.length > 0 && res[0]) {
+      const file = res[0];
+      const fileUrl = file.url;
+      const fileKey = file.key;
+      setTenantForm({ ...tenantForm, profile: fileUrl });
+      setPreviewImage(fileUrl);
+      setUploadingImage(false);
+      console.log("Upload successful:", { url: fileUrl, key: fileKey });
+    }
+  };
+
+  const handleUploadError = (error: Error) => {
+    console.error("Error uploading image:", error);
+    alert("Failed to upload image. Please try again.");
+    setUploadingImage(false);
+  };
+
+  const handleUploadBegin = () => {
+    setUploadingImage(true);
+  };
+
   const fetchTenants = useCallback(async () => {
     try {
       setLoading(true);
@@ -101,27 +123,6 @@ export default function TenantsPage() {
     fetchTenants();
   }, [fetchTenants]);
 
-  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
-    if (res && res.length > 0 && res[0]) {
-      const file = res[0];
-      const fileUrl = file.url;
-      const fileKey = file.key;
-      setTenantForm({ ...tenantForm, profile: fileUrl });
-      setPreviewImage(fileUrl);
-      setUploadingImage(false);
-      console.log("Upload successful:", { url: fileUrl, key: fileKey });
-    }
-  };
-
-  const handleUploadError = (error: Error) => {
-    console.error("Error uploading image:", error);
-    alert("Failed to upload image. Please try again.");
-    setUploadingImage(false);
-  };
-
-  const handleUploadBegin = () => {
-    setUploadingImage(true);
-  };
 
   const handleTenantSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,7 +153,6 @@ export default function TenantsPage() {
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
-        setPreviewImage(null);
         setEditingTenant(null);
         setOpenTenantModal(false);
       } else {
@@ -177,7 +177,6 @@ export default function TenantsPage() {
         }
 
         setTenantForm({ name: "", phone: "", address: "", profile: "" });
-        setPreviewImage(null);
         setOpenTenantModal(false);
       }
     } catch (error) {

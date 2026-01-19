@@ -33,9 +33,7 @@ export async function GET() {
 
     return NextResponse.json(housesWithRooms, {
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
       }
     });
   } catch (error) {
