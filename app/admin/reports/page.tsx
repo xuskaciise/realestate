@@ -1239,10 +1239,10 @@ export default function ReportsPage() {
     doc.rect(0, 0, pageWidth, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
-    doc.setFont(undefined, 'bold');
+    doc.setFont("helvetica", 'bold');
     doc.text(activeTab === "rent" ? "RENT REPORT" : "PAYMENT REPORT", 14, 20);
     doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
+    doc.setFont("helvetica", 'normal');
     doc.text(`Generated: ${dayjs().format("YYYY-MM-DD HH:mm")}`, 14, 28);
     doc.text(`Total Records: ${activeTab === "rent" ? filteredRents.length : filteredPayments.length}`, 14, 34);
     
@@ -1292,17 +1292,17 @@ export default function ReportsPage() {
             doc.rect(14, finalY, pageWidth - 28, 50, 'F');
             
             doc.setFontSize(12);
-            doc.setFont(undefined, 'bold');
+            doc.setFont("helvetica", 'bold');
             doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
             doc.text("SUMMARY", pageWidth / 2, finalY + 10, { align: 'center' });
             
             doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
+            doc.setFont("helvetica", 'normal');
             doc.setTextColor(0, 0, 0);
             doc.text(`Total Monthly Rent: $${totalMonthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth / 2, finalY + 20, { align: 'center' });
             
             doc.setFontSize(16);
-            doc.setFont(undefined, 'bold');
+            doc.setFont("helvetica", 'bold');
             doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
             doc.text(`Grand Total: $${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth / 2, finalY + 35, { align: 'center' });
           }
@@ -1351,18 +1351,18 @@ export default function ReportsPage() {
             doc.rect(14, finalY, pageWidth - 28, 50, 'F');
             
             doc.setFontSize(12);
-            doc.setFont(undefined, 'bold');
+            doc.setFont("helvetica", 'bold');
             doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
             doc.text("SUMMARY", pageWidth / 2, finalY + 10, { align: 'center' });
             
             doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
+            doc.setFont("helvetica", 'normal');
             doc.setTextColor(0, 0, 0);
             doc.text(`Total Paid: $${totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth / 2, finalY + 20, { align: 'center' });
             doc.text(`Total Balance: $${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth / 2, finalY + 28, { align: 'center' });
             
             doc.setFontSize(16);
-            doc.setFont(undefined, 'bold');
+            doc.setFont("helvetica", 'bold');
             doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
             doc.text(`Grand Total: $${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth / 2, finalY + 40, { align: 'center' });
           }
