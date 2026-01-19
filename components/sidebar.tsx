@@ -38,11 +38,6 @@ const menuItems = [
     icon: Receipt,
   },
   {
-    title: "Payments",
-    href: "/admin/payments",
-    icon: CreditCard,
-  },
-  {
     title: "Reports",
     href: "/admin/reports",
     icon: BarChart3,
@@ -56,6 +51,11 @@ const menuItems = [
     title: "Users",
     href: "/admin/users",
     icon: UserCog,
+  },
+  {
+    title: "Payments",
+    href: "/admin/payments",
+    icon: CreditCard,
   },
 ];
 

@@ -151,12 +151,94 @@ export default function PaymentsPage() {
     }
   }, []);
 
+  const fetchPayments = async () => {
+    try {
+      const response = await fetch("/api/payments");
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data);
+      }
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+    }
+  };
+
+  const fetchRents = async () => {
+    try {
+      const response = await fetch("/api/rents");
+      if (response.ok) {
+        const data = await response.json();
+        setRents(data);
+      }
+    } catch (error) {
+      console.error("Error fetching rents:", error);
+    }
+  };
+
+  const fetchMonthlyServices = async () => {
+    try {
+      const response = await fetch("/api/monthly-services");
+      if (response.ok) {
+        const data = await response.json();
+        setMonthlyServices(data);
+      }
+    } catch (error) {
+      console.error("Error fetching monthly services:", error);
+    }
+  };
+
+  const calculateTenantBalance = useCallback((tenantId: string): number => {
+    // Find active rent for this tenant
+    const today = dayjs();
+    const activeRent = rents.find(
+      (r) => r.tenantId === tenantId && 
+      (today.isAfter(dayjs(r.startDate)) || today.isSame(dayjs(r.startDate), "day")) && 
+      (today.isBefore(dayjs(r.endDate)) || today.isSame(dayjs(r.endDate), "day"))
+    );
+
+    if (!activeRent) {
+      // If no active rent, check if there are any unpaid payments
+      const tenantPayments = payments.filter((p: Payment) => p.tenantId === tenantId);
+      const totalBalance = tenantPayments.reduce((sum, p) => sum + (p.balance > 0 ? p.balance : 0), 0);
+      return totalBalance;
+    }
+
+    // Calculate total paid amount for this tenant (rent payments only, no monthly service)
+    const tenantPayments = payments.filter((p: Payment) => {
+      if (p.tenantId !== tenantId) return false;
+      // Only count rent payments (no monthlyServiceId) with same monthlyRent
+      return !p.monthlyServiceId && p.monthlyRent === activeRent.monthlyRent;
+    });
+
+    const totalPaidAmount = tenantPayments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+    const balance = activeRent.monthlyRent - totalPaidAmount;
+    
+    return balance;
+  }, [payments, rents]);
+
+  const fetchTenants = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tenants");
+      if (response.ok) {
+        const data = await response.json();
+        // Filter tenants to only show those with balance > 0
+        const tenantsWithBalance = data.filter((tenant: Tenant) => {
+          const balance = calculateTenantBalance(tenant.id);
+          return balance > 0;
+        });
+        setTenants(tenantsWithBalance);
+      }
+    } catch (error) {
+      console.error("Error fetching tenants:", error);
+    }
+  }, [calculateTenantBalance]);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      // Fetch payments and rents first (needed for balance calculation)
       await Promise.all([
         fetchPayments(),
-        fetchTenants(),
         fetchRents(),
         fetchRooms(),
         fetchMonthlyServices(),
@@ -169,6 +251,13 @@ export default function PaymentsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Fetch and filter tenants when payments or rents are loaded
+  useEffect(() => {
+    if (payments.length >= 0 && rents.length >= 0) {
+      fetchTenants();
+    }
+  }, [payments, rents, fetchTenants]);
 
   // Calculate balance when monthly rent or paid amount changes (considering previous payments)
   // Note: This form is only for rent payments, not monthly services
@@ -232,53 +321,6 @@ export default function PaymentsPage() {
   }, [paymentForm.tenantId, paymentForm.monthlyRent, rents]);
 
 
-  const fetchPayments = async () => {
-    try {
-      const response = await fetch("/api/payments");
-      if (response.ok) {
-        const data = await response.json();
-        setPayments(data);
-      }
-    } catch (error) {
-      console.error("Error fetching payments:", error);
-    }
-  };
-
-  const fetchTenants = async () => {
-    try {
-      const response = await fetch("/api/tenants");
-      if (response.ok) {
-        const data = await response.json();
-        setTenants(data);
-      }
-    } catch (error) {
-      console.error("Error fetching tenants:", error);
-    }
-  };
-
-  const fetchRents = async () => {
-    try {
-      const response = await fetch("/api/rents");
-      if (response.ok) {
-        const data = await response.json();
-        setRents(data);
-      }
-    } catch (error) {
-      console.error("Error fetching rents:", error);
-    }
-  };
-
-  const fetchMonthlyServices = async () => {
-    try {
-      const response = await fetch("/api/monthly-services");
-      if (response.ok) {
-        const data = await response.json();
-        setMonthlyServices(data);
-      }
-    } catch (error) {
-      console.error("Error fetching monthly services:", error);
-    }
-  };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
