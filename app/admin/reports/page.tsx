@@ -1216,7 +1216,7 @@ export default function ReportsPage() {
   const exportToPDF = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
-    const primaryColor = activeTab === "rent" ? [37, 99, 235] : [16, 185, 129];
+    const primaryColor: [number, number, number] = activeTab === "rent" ? [37, 99, 235] : [16, 185, 129];
     
     // Calculate totals
     let totalAmount = 0;
