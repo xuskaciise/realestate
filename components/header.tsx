@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, LogOut, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +13,81 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/toast";
+
+type User = {
+  id: string;
+  username: string;
+  fullname: string;
+  type: string;
+  status: string;
+  profile: string | null;
+};
 
 export function Header() {
+  const router = useRouter();
+  const { addToast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        }
+      } catch (error) {
+        console.error("Error fetching user:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        addToast({
+          type: "success",
+          title: "Success",
+          message: "Logged out successfully",
+        });
+        router.push("/login");
+        router.refresh();
+      } else {
+        addToast({
+          type: "danger",
+          title: "Error",
+          message: "Failed to logout",
+        });
+      }
+    } catch (error) {
+      addToast({
+        type: "danger",
+        title: "Error",
+        message: "An error occurred during logout",
+      });
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-6">
       <div className="flex flex-1 items-center gap-4">
@@ -36,18 +109,40 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
               <Avatar>
-                <AvatarImage src="/placeholder-avatar.jpg" alt="Admin" />
-                <AvatarFallback>AD</AvatarFallback>
+                <AvatarImage 
+                  src={user?.profile || undefined} 
+                  alt={user?.fullname || "User"} 
+                />
+                <AvatarFallback>
+                  {user ? getInitials(user.fullname) : "U"}
+                </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">
+                  {user?.fullname || "User"}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {user?.username || ""}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {user?.type || ""}
+                </p>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem>
+              <User className="mr-2 h-4 w-4" />
+              <span>Profile</span>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Log out</span>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
