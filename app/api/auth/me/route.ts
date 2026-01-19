@@ -23,7 +23,19 @@ export async function GET() {
       );
     }
 
-    const user = JSON.parse(cookieValue);
+    const sessionData = JSON.parse(cookieValue);
+    
+    // Check if session has expired (30 minutes = 1800000 ms)
+    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+    if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
+      // Session expired
+      return NextResponse.json(
+        { error: "Session expired" },
+        { status: 401 }
+      );
+    }
+
+    const { timestamp, ...user } = sessionData;
     return NextResponse.json({ user });
   } catch (error) {
     console.error("Error checking auth:", error);

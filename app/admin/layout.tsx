@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { ToastProvider } from "@/components/ui/toast";
+import { SessionTimeout } from "@/components/session-timeout";
 
 export default function AdminLayout({
   children,
@@ -9,6 +10,7 @@ export default function AdminLayout({
 }) {
   return (
     <ToastProvider>
+      <SessionTimeout />
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

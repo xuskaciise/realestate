@@ -15,13 +15,23 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Verify cookie is valid JSON
+    // Verify cookie is valid JSON and not expired
     try {
       const cookieValue = authCookie.value.trim();
       if (!cookieValue) {
         throw new Error("Empty cookie value");
       }
-      JSON.parse(cookieValue);
+      const sessionData = JSON.parse(cookieValue);
+      
+      // Check if session has expired (30 minutes = 1800000 ms)
+      const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+      if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
+        // Session expired, redirect to login
+        const loginUrl = new URL("/login", request.url);
+        const response = NextResponse.redirect(loginUrl);
+        response.cookies.delete("auth-session");
+        return response;
+      }
     } catch (error) {
       // Invalid cookie, redirect to login
       const loginUrl = new URL("/login", request.url);

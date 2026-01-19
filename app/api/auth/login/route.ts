@@ -89,15 +89,16 @@ export async function POST(request: NextRequest) {
       type: user.type,
       status: user.status,
       profile: user.profile,
+      timestamp: Date.now(), // Add timestamp for session expiration
     };
 
-    // Set cookie with session data
+    // Set cookie with session data (30 minutes = 1800 seconds)
     const cookieStore = await cookies();
     cookieStore.set("auth-session", JSON.stringify(sessionData), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 30, // 30 minutes
       path: "/",
     });
 
