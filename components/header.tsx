@@ -107,8 +107,8 @@ export function Header() {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-              <Avatar>
+            <Button variant="ghost" className="relative h-auto px-3 py-2 gap-3">
+              <Avatar className="h-10 w-10">
                 <AvatarImage 
                   src={user?.profile || undefined} 
                   alt={user?.fullname || "User"} 
@@ -117,6 +117,16 @@ export function Header() {
                   {user ? getInitials(user.fullname) : "U"}
                 </AvatarFallback>
               </Avatar>
+              {!loading && user && (
+                <div className="flex flex-col items-start">
+                  <p className="text-sm font-medium leading-none">
+                    {user.fullname}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {user.type}
+                  </p>
+                </div>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end">
