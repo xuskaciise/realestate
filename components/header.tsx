@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, LogOut, User } from "lucide-react";
+import { Bell, Search, LogOut, User, Menu } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 
+interface HeaderProps {
+  onMenuClick?: () => void;
+}
+
 type User = {
   id: string;
   username: string;
@@ -26,7 +30,7 @@ type User = {
   profile: string | null;
 };
 
-export function Header() {
+export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const { addToast } = useToast();
   const [user, setUser] = useState<User | null>(null);
@@ -91,6 +95,15 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-6">
       <div className="flex flex-1 items-center gap-4">
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
