@@ -28,7 +28,7 @@ import dayjs from "dayjs";
 import { Receipt, Plus, Trash2, Edit, FileText, Download, ChevronLeft, ChevronRight, Check, Upload } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
-import { UploadButton, UploadDropzone } from "@/lib/uploadthing";
+import { FileUpload } from "@/components/ui/file-upload";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,7 +89,6 @@ export default function RentsPage() {
   const [loading, setLoading] = useState(true);
   const [openRentModal, setOpenRentModal] = useState(false);
   const [editingRent, setEditingRent] = useState<Rent | null>(null);
-  const [uploadingContract, setUploadingContract] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -243,25 +242,13 @@ export default function RentsPage() {
     }
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
-  const handleContractUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
-    if (res && res.length > 0 && res[0]) {
-      const file = res[0];
-      const fileUrl = file.url;
-      const fileKey = file.key;
-      setRentForm({ ...rentForm, contract: fileUrl });
-      setUploadingContract(false);
-      console.log("Contract upload successful:", { url: fileUrl, key: fileKey });
-    }
+  const handleContractUploadComplete = (url: string) => {
+    setRentForm({ ...rentForm, contract: url });
   };
 
-  const handleContractUploadError = (error: Error) => {
+  const handleContractUploadError = (error: string) => {
     console.error("Error uploading contract:", error);
-    alert("Failed to upload contract. Please try again.");
-    setUploadingContract(false);
-  };
-
-  const handleContractUploadBegin = () => {
-    setUploadingContract(true);
+    alert(error || "Failed to upload contract. Please try again.");
   };
 
   const handleViewContract = (contract: string) => {
@@ -720,45 +707,15 @@ export default function RentsPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-8 bg-white dark:bg-gray-900">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <Upload className="h-12 w-12 text-gray-400 dark:text-gray-500" />
-                      <UploadDropzone
-                        endpoint="rentContract"
-                        onClientUploadComplete={handleContractUploadComplete}
-                        onUploadError={handleContractUploadError}
-                        onUploadBegin={handleContractUploadBegin}
-                        appearance={{
-                          button: "hidden",
-                          allowedContent: "hidden",
-                          container: "w-full",
-                          label: "hidden",
-                        }}
-                      />
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Drag and Drop here</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">or</p>
-                      <UploadButton
-                        endpoint="rentContract"
-                        onClientUploadComplete={handleContractUploadComplete}
-                        onUploadError={handleContractUploadError}
-                        onUploadBegin={handleContractUploadBegin}
-                        content={{
-                          button: "Browse files",
-                          allowedContent: "",
-                        }}
-                        appearance={{
-                          button: "ut-ready:bg-transparent ut-ready:text-blue-600 ut-uploading:bg-transparent ut-uploading:text-blue-400 ut-uploading:cursor-not-allowed bg-transparent text-blue-600 dark:text-blue-400 font-medium px-0 py-0 border-0 shadow-none hover:underline",
-                          allowedContent: "hidden",
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-                {uploadingContract && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                    <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Uploading contract document...</span>
-                  </div>
+                  <FileUpload
+                    folder="rents"
+                    onUploadComplete={handleContractUploadComplete}
+                    onUploadError={handleContractUploadError}
+                    currentFile={rentForm.contract || undefined}
+                    maxSize={4}
+                    variant="dropzone"
+                    accept="application/pdf"
+                  />
                 )}
               </div>
             </div>

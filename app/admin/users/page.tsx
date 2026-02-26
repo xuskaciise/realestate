@@ -35,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
-import { UploadButton } from "@/lib/uploadthing";
+import { FileUpload } from "@/components/ui/file-upload";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,7 +88,6 @@ export default function UsersPage() {
   });
 
   const [userErrors, setUserErrors] = useState<Record<string, string>>({});
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
@@ -246,35 +245,23 @@ export default function UsersPage() {
     setOpenUserModal(true);
   };
 
-  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
-    if (res && res.length > 0 && res[0]) {
-      const file = res[0];
-      const fileUrl = file.url;
-      const fileKey = file.key;
-      setUserForm({ ...userForm, profile: fileUrl });
-      setPreviewImage(fileUrl);
-      setUploadingImage(false);
-      console.log("Upload successful:", { url: fileUrl, key: fileKey });
-      addToast({
-        type: "success",
-        title: "Image Uploaded",
-        message: "Profile image has been uploaded successfully.",
-      });
-    }
+  const handleUploadComplete = (url: string) => {
+    setUserForm({ ...userForm, profile: url });
+    setPreviewImage(url);
+    addToast({
+      type: "success",
+      title: "Image Uploaded",
+      message: "Profile image has been uploaded successfully.",
+    });
   };
 
-  const handleUploadError = (error: Error) => {
+  const handleUploadError = (error: string) => {
     console.error("Error uploading image:", error);
     addToast({
       type: "danger",
       title: "Upload Error",
-      message: "An error occurred while uploading the image.",
+      message: error || "An error occurred while uploading the image.",
     });
-    setUploadingImage(false);
-  };
-
-  const handleUploadBegin = () => {
-    setUploadingImage(true);
   };
 
   const handleDeleteUser = (id: string) => {
@@ -560,22 +547,14 @@ export default function UsersPage() {
                     )}
                   </div>
                   <div className="flex-1">
-                    <UploadButton
-                      endpoint="userImage"
-                      onClientUploadComplete={handleUploadComplete}
+                    <FileUpload
+                      folder="users"
+                      onUploadComplete={handleUploadComplete}
                       onUploadError={handleUploadError}
-                      onUploadBegin={handleUploadBegin}
-                      content={{
-                        button: "Choose Image",
-                        allowedContent: "Image (2MB max)",
-                      }}
+                      currentFile={previewImage || undefined}
+                      maxSize={2}
+                      label="Choose Image"
                     />
-                    {uploadingImage && (
-                      <p className="text-xs text-muted-foreground mt-1">Uploading...</p>
-                    )}
-                    {previewImage && !uploadingImage && (
-                      <p className="text-xs text-green-600 mt-1">✓ Image uploaded successfully</p>
-                    )}
                   </div>
                 </div>
               </div>

@@ -28,7 +28,7 @@ import dayjs from "dayjs";
 import { User, Plus, Trash2, Edit, X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import Image from "next/image";
 import { LoadingOverlay } from "@/components/ui/loading";
-import { UploadButton } from "@/lib/uploadthing";
+import { FileUpload } from "@/components/ui/file-upload";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +58,6 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true);
   const [openTenantModal, setOpenTenantModal] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -72,26 +71,14 @@ export default function TenantsPage() {
 
   const [tenantErrors, setTenantErrors] = useState<Record<string, string>>({});
 
-  const handleUploadComplete = (res: Array<{ url: string; key: string; name?: string }>) => {
-    if (res && res.length > 0 && res[0]) {
-      const file = res[0];
-      const fileUrl = file.url;
-      const fileKey = file.key;
-      setTenantForm({ ...tenantForm, profile: fileUrl });
-      setPreviewImage(fileUrl);
-      setUploadingImage(false);
-      console.log("Upload successful:", { url: fileUrl, key: fileKey });
-    }
+  const handleUploadComplete = (url: string) => {
+    setTenantForm({ ...tenantForm, profile: url });
+    setPreviewImage(url);
   };
 
-  const handleUploadError = (error: Error) => {
+  const handleUploadError = (error: string) => {
     console.error("Error uploading image:", error);
-    alert("Failed to upload image. Please try again.");
-    setUploadingImage(false);
-  };
-
-  const handleUploadBegin = () => {
-    setUploadingImage(true);
+    alert(error || "Failed to upload image. Please try again.");
   };
 
   const fetchTenants = useCallback(async () => {
@@ -358,22 +345,14 @@ export default function TenantsPage() {
                   </div>
                 )}
                 <div className="flex-1">
-                  <UploadButton
-                    endpoint="tenantImage"
-                    onClientUploadComplete={handleUploadComplete}
+                  <FileUpload
+                    folder="tenants"
+                    onUploadComplete={handleUploadComplete}
                     onUploadError={handleUploadError}
-                    onUploadBegin={handleUploadBegin}
-                    content={{
-                      button: "Choose Image",
-                      allowedContent: "Image (2MB max)",
-                    }}
+                    currentFile={previewImage || undefined}
+                    maxSize={2}
+                    label="Choose Image"
                   />
-                  {uploadingImage && (
-                    <p className="text-sm text-muted-foreground mt-1">Uploading...</p>
-                  )}
-                  {previewImage && !uploadingImage && (
-                    <p className="text-sm text-green-600 mt-1">✓ Image uploaded successfully</p>
-                  )}
                 </div>
               </div>
             </div>

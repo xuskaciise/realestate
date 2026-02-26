@@ -3,6 +3,7 @@
 import {
   generateUploadButton,
   generateUploadDropzone,
+  generateReactHelpers,
 } from "@uploadthing/react";
 
 import type { OurFileRouter } from "@/app/api/uploadthing/core";
@@ -15,5 +16,10 @@ export const UploadButton = generateUploadButton<OurFileRouter>({
 });
 
 export const UploadDropzone = generateUploadDropzone<OurFileRouter>({
+  url: typeof window !== "undefined" ? `${window.location.origin}/api/uploadthing` : "/api/uploadthing",
+});
+
+// Generate React helpers for programmatic uploads
+export const { useUploadThing } = generateReactHelpers<OurFileRouter>({
   url: typeof window !== "undefined" ? `${window.location.origin}/api/uploadthing` : "/api/uploadthing",
 });
