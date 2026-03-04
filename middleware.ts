@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getCookieOptions, setAuthSessionCookieInResponse, deleteAuthSessionCookieInResponse } from "@/lib/cookie-utils";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -25,36 +26,31 @@ export function middleware(request: NextRequest) {
       
       // Check if session has expired (24 hours = 86400000 ms)
       const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-      if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
+      const now = Date.now();
+      const sessionAge = sessionData.timestamp ? now - sessionData.timestamp : SESSION_TIMEOUT + 1;
+      
+      if (sessionData.timestamp && sessionAge > SESSION_TIMEOUT) {
         // Session expired, redirect to login
         const loginUrl = new URL("/login", request.url);
         const response = NextResponse.redirect(loginUrl);
-        response.cookies.delete("auth-session");
-        return response;
+        return deleteAuthSessionCookieInResponse(response);
       }
       
       // Update session timestamp on each request (sliding expiration)
       // This extends the session as long as the user is active
       const updatedSessionData = {
         ...sessionData,
-        timestamp: Date.now(),
+        timestamp: now, // Use the same timestamp for consistency
       };
       
       const response = NextResponse.next();
-      response.cookies.set("auth-session", JSON.stringify(updatedSessionData), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24, // 24 hours in seconds
-        path: "/",
-      });
-      return response;
+      return setAuthSessionCookieInResponse(response, updatedSessionData);
     } catch (error) {
       // Invalid cookie, redirect to login
+      console.error("Middleware cookie error:", error);
       const loginUrl = new URL("/login", request.url);
       const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete("auth-session");
-      return response;
+      return deleteAuthSessionCookieInResponse(response);
     }
   }
 

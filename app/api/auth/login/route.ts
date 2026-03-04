@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import User from "@/lib/models/User";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
+import { setAuthSessionCookie } from "@/lib/cookie-utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -93,14 +93,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Set cookie with session data (24 hours = 86400 seconds)
-    const cookieStore = await cookies();
-    cookieStore.set("auth-session", JSON.stringify(sessionData), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24, // 24 hours
-      path: "/",
-    });
+    await setAuthSessionCookie(sessionData);
 
     return NextResponse.json({
       message: "Login successful",

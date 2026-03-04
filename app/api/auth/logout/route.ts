@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { deleteAuthSessionCookie } from "@/lib/cookie-utils";
 
 export const dynamic = 'force-dynamic';
 
 export async function POST() {
   try {
-    const cookieStore = await cookies();
-    cookieStore.delete("auth-session");
+    await deleteAuthSessionCookie();
 
     return NextResponse.json({ message: "Logout successful" });
   } catch (error) {
