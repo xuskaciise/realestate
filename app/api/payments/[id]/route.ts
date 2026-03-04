@@ -3,7 +3,9 @@ import connectDB from "@/lib/mongoose";
 import Payment from "@/lib/models/Payment";
 import Tenant from "@/lib/models/Tenant";
 import MonthlyService from "@/lib/models/MonthlyService";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
@@ -22,6 +24,15 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
     const payment = await Payment.findById(params.id).lean();
 
     if (!payment) {
@@ -29,6 +40,17 @@ export async function GET(
         { error: "Payment not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only access their own payments
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!payment.createdBy || !payment.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     const tenant = await Tenant.findById(payment.tenantId).lean();
@@ -61,6 +83,14 @@ export async function PUT(
     const validated = paymentSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
 
     // Get the existing payment to exclude it from previous payments calculation
     const existingPayment = await Payment.findById(params.id).lean();
@@ -69,6 +99,17 @@ export async function PUT(
         { error: "Payment not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only update their own payments
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingPayment.createdBy || !existingPayment.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     // Calculate total due amount
@@ -172,6 +213,34 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingPayment = await Payment.findById(params.id).lean();
+    if (!existingPayment) {
+      return NextResponse.json(
+        { error: "Payment not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete their own payments
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingPayment.createdBy || !existingPayment.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const payment = await Payment.findByIdAndDelete(params.id);
 
     if (!payment) {

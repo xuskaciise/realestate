@@ -7,8 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Lock, User, Eye, EyeOff } from "lucide-react";
+import { Building2, Lock, User, Eye, EyeOff, Upload } from "lucide-react";
 import Image from "next/image";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { FileUpload } from "@/components/ui/file-upload";
 
 function LoginForm() {
   const router = useRouter();
@@ -16,10 +26,20 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [openRegisterModal, setOpenRegisterModal] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     username: "",
     password: "",
   });
+  const [registerForm, setRegisterForm] = useState({
+    fullname: "",
+    username: "",
+    password: "",
+    profile: "",
+  });
+  const [registerErrors, setRegisterErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     // Check if already logged in
@@ -80,6 +100,94 @@ function LoginForm() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegisterErrors({});
+    setRegisterLoading(true);
+
+    if (!registerForm.fullname || !registerForm.username || !registerForm.password) {
+      setRegisterErrors({
+        fullname: !registerForm.fullname ? "Full name is required" : "",
+        username: !registerForm.username ? "Username is required" : "",
+        password: !registerForm.password ? "Password is required" : "",
+      });
+      setRegisterLoading(false);
+      return;
+    }
+
+    if (registerForm.password.length < 6) {
+      setRegisterErrors({ password: "Password must be at least 6 characters" });
+      setRegisterLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullname: registerForm.fullname,
+          username: registerForm.username,
+          password: registerForm.password,
+          type: "Staff",
+          status: "Inactive",
+          profile: registerForm.profile || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        addToast({
+          type: "success",
+          title: "Registration Successful",
+          message: "Your account has been created. Please wait for admin approval.",
+        });
+        setOpenRegisterModal(false);
+        setRegisterForm({ fullname: "", username: "", password: "", profile: "" });
+        setPreviewImage(null);
+      } else {
+        addToast({
+          type: "danger",
+          title: "Registration Failed",
+          message: data.error || "Failed to register. Please try again.",
+        });
+        if (data.error?.includes("username")) {
+          setRegisterErrors({ username: data.error });
+        }
+      }
+    } catch (error) {
+      addToast({
+        type: "danger",
+        title: "Error",
+        message: "An error occurred. Please try again.",
+      });
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
+  const handleUploadComplete = (url: string) => {
+    setRegisterForm({ ...registerForm, profile: url });
+    setPreviewImage(url);
+    addToast({
+      type: "success",
+      title: "Image Uploaded",
+      message: "Profile image has been uploaded successfully.",
+    });
+  };
+
+  const handleUploadError = (error: string) => {
+    console.error("Error uploading image:", error);
+    addToast({
+      type: "danger",
+      title: "Upload Error",
+      message: error || "An error occurred while uploading the image.",
+    });
   };
 
   if (checkingAuth) {
@@ -234,10 +342,144 @@ function LoginForm() {
             <div className="mt-6 text-center text-sm text-muted-foreground">
               <p>Secure login powered by Real Estate Management System</p>
             </div>
+
+            <div className="mt-4 text-center">
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => setOpenRegisterModal(true)}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                Register Now
+              </Button>
+            </div>
           </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Registration Modal */}
+      <Dialog open={openRegisterModal} onOpenChange={setOpenRegisterModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add User</DialogTitle>
+            <DialogDescription>Create a new user account</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRegisterSubmit} className="space-y-4">
+            {/* Profile Image Upload */}
+            <div className="space-y-2">
+              <Label>Profile Image</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  {previewImage ? (
+                    <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-gray-200">
+                      <Image
+                        src={previewImage}
+                        alt="Profile preview"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-20 w-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
+                      <User className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <FileUpload
+                    folder="users"
+                    onUploadComplete={handleUploadComplete}
+                    onUploadError={handleUploadError}
+                    currentFile={previewImage || undefined}
+                    maxSize={2}
+                    label="Choose Image"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="register-fullname">
+                Full Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="register-fullname"
+                value={registerForm.fullname}
+                onChange={(e) => {
+                  setRegisterForm({ ...registerForm, fullname: e.target.value });
+                  if (registerErrors.fullname) {
+                    setRegisterErrors({ ...registerErrors, fullname: "" });
+                  }
+                }}
+                className={registerErrors.fullname ? "border-destructive" : ""}
+              />
+              {registerErrors.fullname && (
+                <p className="text-sm text-destructive font-medium">{registerErrors.fullname}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="register-username">
+                Username <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="register-username"
+                value={registerForm.username}
+                onChange={(e) => {
+                  setRegisterForm({ ...registerForm, username: e.target.value });
+                  if (registerErrors.username) {
+                    setRegisterErrors({ ...registerErrors, username: "" });
+                  }
+                }}
+                className={registerErrors.username ? "border-destructive" : ""}
+              />
+              {registerErrors.username && (
+                <p className="text-sm text-destructive font-medium">{registerErrors.username}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="register-password">
+                Password <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="register-password"
+                type="password"
+                value={registerForm.password}
+                onChange={(e) => {
+                  setRegisterForm({ ...registerForm, password: e.target.value });
+                  if (registerErrors.password) {
+                    setRegisterErrors({ ...registerErrors, password: "" });
+                  }
+                }}
+                className={registerErrors.password ? "border-destructive" : ""}
+              />
+              {registerErrors.password && (
+                <p className="text-sm text-destructive font-medium">{registerErrors.password}</p>
+              )}
+            </div>
+
+            <DialogFooter className="mt-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setOpenRegisterModal(false);
+                  setRegisterForm({ fullname: "", username: "", password: "", profile: "" });
+                  setPreviewImage(null);
+                  setRegisterErrors({});
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={registerLoading}>
+                {registerLoading ? "Registering..." : "Register"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

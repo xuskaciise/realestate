@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import User from "@/lib/models/User";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
@@ -13,10 +14,26 @@ const userSchema = z.object({
   profile: z.string().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const users = await User.find({})
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    // Only Admin can see all users, Staff can only see themselves
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+    
+    let query: any = {};
+    if (currentUser.type !== "Admin") {
+      // Staff users can only see themselves
+      query._id = currentUser.id;
+    }
+    
+    const users = await User.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
       .lean();

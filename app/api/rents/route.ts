@@ -4,7 +4,9 @@ import Rent from "@/lib/models/Rent";
 import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
 import Tenant from "@/lib/models/Tenant";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const rentSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -19,10 +21,19 @@ const rentSchema = z.object({
   contract: z.string().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const rents = await Rent.find({}).sort({ createdAt: -1 }).lean();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    // Build query based on user type
+    let query: any = {};
+    if (currentUser && currentUser.type !== "Admin") {
+      // Staff users can only see their own rents
+      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
+    }
+    
+    const rents = await Rent.find(query).sort({ createdAt: -1 }).lean();
 
     // Return normalized data (only IDs, no populated objects)
     const normalizedRents = rents.map((rent) => ({
@@ -82,6 +93,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      console.error("ERROR: No current user found when creating rent");
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
+      return NextResponse.json(
+        { error: "Invalid user session" },
+        { status: 401 }
+      );
+    }
+
+    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
+
     const rent = new Rent({
       roomId: validated.roomId,
       tenantId: validated.tenantId,
@@ -93,6 +123,7 @@ export async function POST(request: NextRequest) {
       startDate: newStartDate,
       endDate: newEndDate,
       contract: validated.contract || null,
+      createdBy: createdByValue,
     });
 
     const savedRent = await rent.save();

@@ -16,6 +16,7 @@ export interface IMonthlyService extends Document {
   maintenanceFee: number | null;
   totalAmount: number;
   notes: string | null;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +37,12 @@ const MonthlyServiceSchema: Schema = new Schema(
     maintenanceFee: { type: Number, default: null },
     totalAmount: { type: Number, required: true },
     notes: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

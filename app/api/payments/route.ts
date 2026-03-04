@@ -4,7 +4,9 @@ import Payment from "@/lib/models/Payment";
 import Tenant from "@/lib/models/Tenant";
 import MonthlyService from "@/lib/models/MonthlyService";
 import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
@@ -18,10 +20,19 @@ const paymentSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const payments = await Payment.find({}).sort({ paymentDate: -1 }).lean();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    // Build query based on user type
+    let query: any = {};
+    if (currentUser && currentUser.type !== "Admin") {
+      // Staff users can only see their own payments
+      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
+    }
+    
+    const payments = await Payment.find(query).sort({ paymentDate: -1 }).lean();
 
     // Populate tenant for each payment
     const paymentsWithTenant = await Promise.all(
@@ -111,6 +122,25 @@ export async function POST(request: NextRequest) {
       status = "Pending";
     }
 
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      console.error("ERROR: No current user found when creating payment");
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
+      return NextResponse.json(
+        { error: "Invalid user session" },
+        { status: 401 }
+      );
+    }
+
+    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
+
     const payment = new Payment({
       tenantId: validated.tenantId,
       monthlyRent: validated.monthlyRent,
@@ -121,6 +151,7 @@ export async function POST(request: NextRequest) {
       monthlyServiceId: validated.monthlyServiceId || null,
       maintenanceRequestId: validated.maintenanceRequestId || null,
       notes: validated.notes || null,
+      createdBy: createdByValue,
     });
 
     const savedPayment = await payment.save();

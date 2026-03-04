@@ -3,7 +3,9 @@ import connectDB from "@/lib/mongoose";
 import MonthlyService from "@/lib/models/MonthlyService";
 import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const monthlyServiceSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -28,6 +30,15 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
     const service = await MonthlyService.findById(params.id).lean();
 
     if (!service) {
@@ -35,6 +46,17 @@ export async function GET(
         { error: "Monthly service not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only access their own services
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!service.createdBy || !service.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     const room = await Room.findById(service.roomId).lean();
@@ -78,15 +100,42 @@ export async function PUT(
     const validated = monthlyServiceSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingService = await MonthlyService.findById(params.id).lean();
+    if (!existingService) {
+      return NextResponse.json(
+        { error: "Monthly service not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only update their own services
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingService.createdBy || !existingService.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
 
     // Check for duplicate service (same room and month, excluding current service)
-    const existingService = await MonthlyService.findOne({
+    const duplicateService = await MonthlyService.findOne({
       roomId: validated.roomId,
       month: validated.month,
       _id: { $ne: params.id }, // Exclude current service
     }).lean();
 
-    if (existingService) {
+    if (duplicateService) {
       return NextResponse.json(
         { 
           error: "Duplicate service", 
@@ -168,6 +217,34 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingService = await MonthlyService.findById(params.id).lean();
+    if (!existingService) {
+      return NextResponse.json(
+        { error: "Monthly service not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete their own services
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingService.createdBy || !existingService.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const service = await MonthlyService.findByIdAndDelete(params.id);
 
     if (!service) {

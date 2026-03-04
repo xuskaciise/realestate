@@ -172,11 +172,15 @@ export default function PropertiesPage() {
             await fetchHouses();
             setShowAddRoomForHouse(createdHouseId);
           } else {
-            throw new Error("Failed to create house");
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || `Failed to create house (${response.status})`;
+            console.error("Error creating house:", errorMessage, errorData);
+            alert(errorMessage);
+            return;
           }
         } catch (error) {
           console.error("Error creating house:", error);
-          alert("Failed to create house. Please try again.");
+          alert(error instanceof Error ? error.message : "Failed to create house. Please try again.");
           return;
         }
 

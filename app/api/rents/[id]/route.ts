@@ -4,7 +4,9 @@ import Rent from "@/lib/models/Rent";
 import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
 import Tenant from "@/lib/models/Tenant";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const rentSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -25,6 +27,15 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
     const rent = await Rent.findById(params.id).lean();
 
     if (!rent) {
@@ -32,6 +43,17 @@ export async function GET(
         { error: "Rent not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only access their own rents
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!rent.createdBy || !rent.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     // Return normalized data
@@ -63,6 +85,33 @@ export async function PUT(
     const validated = rentSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingRent = await Rent.findById(params.id).lean();
+    if (!existingRent) {
+      return NextResponse.json(
+        { error: "Rent not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only update their own rents
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingRent.createdBy || !existingRent.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
 
     // Check if room has an active rent that overlaps with the updated rent period (excluding current rent)
     const newStartDate = new Date(validated.startDate);
@@ -146,6 +195,34 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingRent = await Rent.findById(params.id).lean();
+    if (!existingRent) {
+      return NextResponse.json(
+        { error: "Rent not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete their own rents
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingRent.createdBy || !existingRent.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const rent = await Rent.findByIdAndDelete(params.id);
 
     if (!rent) {

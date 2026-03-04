@@ -25,7 +25,7 @@ import {
 import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
-import { Wrench, Plus, Trash2, Edit, Check, X, ChevronLeft, ChevronRight, CreditCard } from "lucide-react";
+import { Wrench, Plus, Trash2, Edit, Check, X, ChevronLeft, ChevronRight, CreditCard, ChevronDown } from "lucide-react";
 import { LoadingOverlay } from "@/components/ui/loading";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -139,6 +139,7 @@ export default function MaintenancePage() {
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [hoveredRequestId, setHoveredRequestId] = useState<string | null>(null);
 
   const [issueForm, setIssueForm] = useState({
     name: "",
@@ -650,6 +651,35 @@ export default function MaintenancePage() {
     setRequestToDelete(null);
   };
 
+  const handleStatusUpdate = async (requestId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/maintenance-requests/${requestId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (response.ok) {
+        await fetchRequests();
+        addToast({
+          type: "success",
+          title: "Status Updated",
+          message: `Maintenance request status has been updated to ${newStatus}.`,
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to update status");
+      }
+    } catch (error) {
+      console.error("Error updating status:", error);
+      addToast({
+        type: "danger",
+        title: "Error",
+        message: error instanceof Error ? error.message : "Failed to update status. Please try again.",
+      });
+    }
+  };
+
   const toggleIssueSelection = (issueId: string) => {
     setRequestForm(prev => {
       const isSelected = prev.selectedIssueIds.includes(issueId);
@@ -949,15 +979,80 @@ export default function MaintenancePage() {
                     {requests.slice(0, 10).map((request) => {
                       const balance = calculateRequestBalance(request.id, request.totalPrice);
                       const totalPaid = request.totalPrice - balance;
+                      const requestIssues = request.issues || issues.filter(issue => request.issueIds.includes(issue.id));
                       return (
                         <div
                           key={request.id}
-                          className="p-4 border rounded-lg hover:bg-accent transition-colors"
+                          className="relative p-4 border rounded-lg hover:bg-accent transition-colors"
+                          onMouseEnter={() => setHoveredRequestId(request.id)}
+                          onMouseLeave={() => setHoveredRequestId(null)}
                         >
+                          {/* Tooltip */}
+                          {hoveredRequestId === request.id && requestIssues.length > 0 && (
+                            <div className="absolute z-50 bottom-full mb-2 left-0 w-full max-w-sm p-3 bg-popover border rounded-lg shadow-lg animate-in fade-in-0 zoom-in-95">
+                              <div className="text-sm font-semibold mb-2 text-popover-foreground">Issues Details:</div>
+                              <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {requestIssues.map((issue) => (
+                                  <div key={issue.id} className="border-b border-border pb-2 last:border-0 last:pb-0">
+                                    <div className="font-medium text-sm text-popover-foreground">{issue.name}</div>
+                                    {issue.description && (
+                                      <div className="text-xs text-muted-foreground mt-1">{issue.description}</div>
+                                    )}
+                                    <div className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-semibold">
+                                      ${issue.price.toLocaleString()}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between mb-2">
-                            <Badge variant={getStatusBadgeVariant(request.status)}>
-                              {request.status}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={getStatusBadgeVariant(request.status)}>
+                                {request.status}
+                              </Badge>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                  >
+                                    <ChevronDown className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                  <DropdownMenuItem
+                                    onClick={() => handleStatusUpdate(request.id, "Pending")}
+                                    className={request.status === "Pending" ? "bg-accent" : ""}
+                                  >
+                                    {request.status === "Pending" && <Check className="mr-2 h-4 w-4" />}
+                                    Pending
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleStatusUpdate(request.id, "In Progress")}
+                                    className={request.status === "In Progress" ? "bg-accent" : ""}
+                                  >
+                                    {request.status === "In Progress" && <Check className="mr-2 h-4 w-4" />}
+                                    In Progress
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleStatusUpdate(request.id, "Completed")}
+                                    className={request.status === "Completed" ? "bg-accent" : ""}
+                                  >
+                                    {request.status === "Completed" && <Check className="mr-2 h-4 w-4" />}
+                                    Completed
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleStatusUpdate(request.id, "Cancelled")}
+                                    className={request.status === "Cancelled" ? "bg-accent" : ""}
+                                  >
+                                    {request.status === "Cancelled" && <Check className="mr-2 h-4 w-4" />}
+                                    Cancelled
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                             <div className="text-right">
                               <div className="font-bold text-lg">
                                 ${request.totalPrice.toLocaleString()}

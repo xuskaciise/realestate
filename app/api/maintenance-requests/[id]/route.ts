@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
 import MaintenanceIssue from "@/lib/models/MaintenanceIssue";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const updateRequestSchema = z.object({
   tenantId: z.string().optional(),
@@ -18,6 +20,15 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
     const maintenanceRequest = await MaintenanceRequest.findById(params.id).lean();
 
     if (!maintenanceRequest) {
@@ -25,6 +36,17 @@ export async function GET(
         { error: "Maintenance request not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only access their own requests
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!maintenanceRequest.createdBy || !maintenanceRequest.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     // Populate issue details
@@ -58,6 +80,14 @@ export async function PUT(
     const validated = updateRequestSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
 
     const existingRequest = await MaintenanceRequest.findById(params.id).lean();
     if (!existingRequest) {
@@ -65,6 +95,17 @@ export async function PUT(
         { error: "Maintenance request not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only update their own requests
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingRequest.createdBy || !existingRequest.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     const updateData: any = {};
@@ -129,6 +170,34 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingRequest = await MaintenanceRequest.findById(params.id).lean();
+    if (!existingRequest) {
+      return NextResponse.json(
+        { error: "Maintenance request not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete their own requests
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingRequest.createdBy || !existingRequest.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const maintenanceRequest = await MaintenanceRequest.findByIdAndDelete(params.id);
 
     if (!maintenanceRequest) {

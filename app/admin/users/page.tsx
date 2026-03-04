@@ -26,7 +26,7 @@ import { useState, useEffect, useCallback } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import Image from "next/image";
-import { Users, Plus, Trash2, Edit, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { Users, Plus, Trash2, Edit, ChevronLeft, ChevronRight, Check, CheckSquare, Square } from "lucide-react";
 import { LoadingOverlay } from "@/components/ui/loading";
 import {
   DropdownMenu,
@@ -71,12 +71,14 @@ export default function UsersPage() {
   const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<{ type: string } | null>(null);
   const [openUserModal, setOpenUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
 
   const [userForm, setUserForm] = useState({
     fullname: "",
@@ -92,7 +94,12 @@ export default function UsersPage() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch("/api/users");
+      const response = await fetch("/api/users", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -113,6 +120,15 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadData();
+    // Fetch current user to check permissions
+    fetch("/api/auth/me")
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
   }, [loadData]);
 
   const handleUserSubmit = async (e: React.FormEvent) => {
@@ -128,84 +144,86 @@ export default function UsersPage() {
         });
 
         const userId = editingUser.id;
-        const updatedUsers = users.map((u) =>
-          u.id === userId
-            ? {
-                ...u,
-                ...validated,
-                profile: userForm.profile || u.profile || null,
-                updatedAt: new Date().toISOString(),
-              }
-            : u
-        );
-        setUsers(updatedUsers);
 
         try {
-          await fetch(`/api/users/${userId}`, {
+          const response = await fetch(`/api/users/${userId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
-        } catch (error) {
-          console.error("API update failed, but local update succeeded:", error);
-        }
 
-        setUserForm({
-          fullname: "",
-          username: "",
-          password: "",
-          type: "Staff",
-          status: "Active",
-          profile: "",
-        });
-        setPreviewImage(null);
-        setEditingUser(null);
-        setOpenUserModal(false);
-        addToast({
-          type: "success",
-          title: "User Updated",
-          message: "User has been updated successfully.",
-        });
+          if (!response.ok) {
+            throw new Error("Failed to update user");
+          }
+
+          // Refresh users from server to get latest data
+          await fetchUsers();
+
+          setUserForm({
+            fullname: "",
+            username: "",
+            password: "",
+            type: "Staff",
+            status: "Active",
+            profile: "",
+          });
+          setPreviewImage(null);
+          setEditingUser(null);
+          setOpenUserModal(false);
+          addToast({
+            type: "success",
+            title: "User Updated",
+            message: "User has been updated successfully.",
+          });
+        } catch (error) {
+          console.error("API update failed:", error);
+          addToast({
+            type: "danger",
+            title: "Update Error",
+            message: "Failed to update user. Please try again.",
+          });
+        }
       } else {
         // Create user - password is required
         const validated = userSchema.parse(userForm);
 
-        const newUser: User = {
-          id: crypto.randomUUID(),
-          ...validated,
-          profile: validated.profile || null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const updatedUsers = [...users, newUser];
-        setUsers(updatedUsers);
-
         try {
-          await fetch("/api/users", {
+          const response = await fetch("/api/users", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(validated),
           });
-        } catch (error) {
-          console.error("API create failed, but local create succeeded:", error);
-        }
 
-        setUserForm({
-          fullname: "",
-          username: "",
-          password: "",
-          type: "Staff",
-          status: "Active",
-          profile: "",
-        });
-        setPreviewImage(null);
-        setOpenUserModal(false);
-        addToast({
-          type: "success",
-          title: "User Added",
-          message: "User has been added successfully.",
-        });
+          if (!response.ok) {
+            throw new Error("Failed to create user");
+          }
+
+          // Refresh users from server to get latest data
+          await fetchUsers();
+
+          setUserForm({
+            fullname: "",
+            username: "",
+            password: "",
+            type: "Staff",
+            status: "Active",
+            profile: "",
+          });
+          setPreviewImage(null);
+          setOpenUserModal(false);
+          addToast({
+            type: "success",
+            title: "User Added",
+            message: "User has been added successfully.",
+          });
+        } catch (error) {
+          console.error("API create failed:", error);
+          addToast({
+            type: "danger",
+            title: "Create Error",
+            message: "Failed to create user. Please try again.",
+          });
+        }
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -272,20 +290,25 @@ export default function UsersPage() {
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
 
-    const updatedUsers = users.filter((u) => u.id !== userToDelete);
-    setUsers(updatedUsers);
-
     try {
-      await fetch(`/api/users/${userToDelete}`, {
+      const response = await fetch(`/api/users/${userToDelete}`, {
         method: "DELETE",
       });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete user");
+      }
+
+      // Refresh users from server to get latest data
+      await fetchUsers();
+
       addToast({
         type: "success",
         title: "User Deleted",
         message: "User has been deleted successfully.",
       });
     } catch (error) {
-      console.error("API delete failed, but local delete succeeded:", error);
+      console.error("API delete failed:", error);
       addToast({
         type: "danger",
         title: "Delete Error",
@@ -352,6 +375,83 @@ export default function UsersPage() {
     }
   };
 
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUsers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUsers.length === paginatedUsers.length) {
+      setSelectedUsers([]);
+    } else {
+      setSelectedUsers(paginatedUsers.map(u => u.id));
+    }
+  };
+
+  const handleBulkStatusUpdate = async (status: "Active" | "Inactive") => {
+    if (selectedUsers.length === 0) {
+      addToast({
+        type: "danger",
+        title: "No Selection",
+        message: "Please select at least one user.",
+      });
+      return;
+    }
+
+    // Optimistically update the UI immediately
+    setUsers(prevUsers =>
+      prevUsers.map(user =>
+        selectedUsers.includes(user.id)
+          ? { ...user, status }
+          : user
+      )
+    );
+
+    try {
+      const updatePromises = selectedUsers.map(userId =>
+        fetch(`/api/users/${userId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        })
+      );
+
+      const responses = await Promise.all(updatePromises);
+      
+      // Check if all updates were successful
+      const allSuccessful = responses.every(res => res.ok);
+      
+      if (!allSuccessful) {
+        // Revert optimistic update on error
+        await fetchUsers();
+        throw new Error("Some updates failed");
+      }
+
+      // Refresh users from server to get latest data (with cache busting)
+      await fetchUsers();
+
+      addToast({
+        type: "success",
+        title: "Status Updated",
+        message: `${selectedUsers.length} user(s) have been set to ${status}.`,
+      });
+
+      setSelectedUsers([]);
+    } catch (error) {
+      console.error("Error updating user statuses:", error);
+      // Revert to server state on error
+      await fetchUsers();
+      addToast({
+        type: "danger",
+        title: "Error",
+        message: "Failed to update user statuses. Please try again.",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {loading && (
@@ -364,16 +464,40 @@ export default function UsersPage() {
           <h1 className="text-3xl font-bold">Users</h1>
           <p className="text-muted-foreground">Manage system users and permissions</p>
         </div>
-        <Button onClick={openUserForm} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
+        {currentUser?.type === "Admin" && (
+          <Button onClick={openUserForm} className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+        )}
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>View and manage user accounts</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Users</CardTitle>
+              <CardDescription>View and manage user accounts</CardDescription>
+            </div>
+            {currentUser?.type === "Admin" && selectedUsers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => handleBulkStatusUpdate("Active")}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Make All Active
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleBulkStatusUpdate("Inactive")}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  Make All Inactive
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {users.length === 0 ? (
@@ -386,6 +510,21 @@ export default function UsersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {currentUser?.type === "Admin" && (
+                      <TableHead className="w-12">
+                        <button
+                          type="button"
+                          onClick={toggleSelectAll}
+                          className="flex items-center justify-center"
+                        >
+                          {selectedUsers.length === paginatedUsers.length && paginatedUsers.length > 0 ? (
+                            <CheckSquare className="h-5 w-5 text-blue-600" />
+                          ) : (
+                            <Square className="h-5 w-5 text-gray-400" />
+                          )}
+                        </button>
+                      </TableHead>
+                    )}
                     <TableHead>Profile</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Username</TableHead>
@@ -398,6 +537,21 @@ export default function UsersPage() {
                 <TableBody>
                   {paginatedUsers.map((user) => (
                     <TableRow key={user.id}>
+                      {currentUser?.type === "Admin" && (
+                        <TableCell>
+                          <button
+                            type="button"
+                            onClick={() => toggleUserSelection(user.id)}
+                            className="flex items-center justify-center"
+                          >
+                            {selectedUsers.includes(user.id) ? (
+                              <CheckSquare className="h-5 w-5 text-blue-600" />
+                            ) : (
+                              <Square className="h-5 w-5 text-gray-400" />
+                            )}
+                          </button>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Avatar>
                           <AvatarImage 
@@ -431,24 +585,28 @@ export default function UsersPage() {
                         {dayjs(user.createdAt).format("MMM DD, YYYY")}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditUser(user)}
-                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteUser(user.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {currentUser?.type === "Admin" ? (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditUser(user)}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">View Only</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

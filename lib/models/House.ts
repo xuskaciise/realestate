@@ -5,6 +5,7 @@ export interface IHouse extends Document {
   name: string;
   address: string;
   description: string | null;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -14,6 +15,12 @@ const HouseSchema: Schema = new Schema(
     name: { type: String, required: true },
     address: { type: String, required: true },
     description: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

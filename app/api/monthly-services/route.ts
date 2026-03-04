@@ -3,7 +3,9 @@ import connectDB from "@/lib/mongoose";
 import MonthlyService from "@/lib/models/MonthlyService";
 import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const monthlyServiceSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -22,10 +24,19 @@ const monthlyServiceSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const services = await MonthlyService.find({}).sort({ month: -1 }).lean();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    // Build query based on user type
+    let query: any = {};
+    if (currentUser && currentUser.type !== "Admin") {
+      // Staff users can only see their own services
+      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
+    }
+    
+    const services = await MonthlyService.find(query).sort({ month: -1 }).lean();
 
     // Populate room and house for each service
     const servicesWithRelations = await Promise.all(
@@ -93,6 +104,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      console.error("ERROR: No current user found when creating monthly service");
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
+      return NextResponse.json(
+        { error: "Invalid user session" },
+        { status: 401 }
+      );
+    }
+
+    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
+
     const service = new MonthlyService({
       roomId: validated.roomId,
       month: validated.month,
@@ -108,6 +138,7 @@ export async function POST(request: NextRequest) {
       maintenanceFee: validated.maintenanceFee ?? null,
       totalAmount: validated.totalAmount,
       notes: validated.notes ?? null,
+      createdBy: createdByValue,
     });
 
     const savedService = await service.save();

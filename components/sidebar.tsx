@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -14,12 +15,13 @@ import {
   UserCog,
   Wrench,
   X,
+  Settings,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-const menuItems = [
+const allMenuItems = [
   {
     title: "Dashboard",
     href: "/admin",
@@ -65,6 +67,11 @@ const menuItems = [
     href: "/admin/users",
     icon: UserCog,
   },
+  {
+    title: "Settings",
+    href: "/admin/settings",
+    icon: Settings,
+  },
 ];
 
 interface SidebarProps {
@@ -74,6 +81,28 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Fetch current user to determine menu items
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        if (response.ok) {
+          const data = await response.json();
+          setCurrentUser(data.user);
+        }
+      } catch (error) {
+        console.error("Error fetching current user:", error);
+      }
+    };
+    fetchCurrentUser();
+  }, []);
+
+  // Filter menu items based on user type
+  const menuItems = currentUser?.type === "Admin" 
+    ? allMenuItems 
+    : allMenuItems.filter(item => item.href !== "/admin/settings");
 
   const handleLinkClick = () => {
     // Close sidebar on mobile when link is clicked

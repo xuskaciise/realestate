@@ -12,6 +12,7 @@ export interface IRent extends Document {
   startDate: Date;
   endDate: Date;
   contract: string | null;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +29,12 @@ const RentSchema: Schema = new Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     contract: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

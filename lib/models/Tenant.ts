@@ -6,6 +6,7 @@ export interface ITenant extends Document {
   phone: string;
   address: string;
   profile: string | null;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,12 @@ const TenantSchema: Schema = new Schema(
     phone: { type: String, required: true },
     address: { type: String, required: true },
     profile: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

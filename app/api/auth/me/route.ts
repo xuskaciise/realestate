@@ -25,8 +25,8 @@ export async function GET() {
 
     const sessionData = JSON.parse(cookieValue);
     
-    // Check if session has expired (30 minutes = 1800000 ms)
-    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+    // Check if session has expired (24 hours = 86400000 ms)
+    const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
       // Session expired
       return NextResponse.json(
@@ -35,7 +35,22 @@ export async function GET() {
       );
     }
 
-    const { timestamp, ...user } = sessionData;
+    // Update session timestamp (sliding expiration)
+    const updatedSessionData = {
+      ...sessionData,
+      timestamp: Date.now(),
+    };
+
+    // Update cookie with new timestamp (reuse existing cookieStore)
+    cookieStore.set("auth-session", JSON.stringify(updatedSessionData), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24, // 24 hours
+      path: "/",
+    });
+
+    const { timestamp, ...user } = updatedSessionData;
     return NextResponse.json({ user });
   } catch (error) {
     console.error("Error checking auth:", error);

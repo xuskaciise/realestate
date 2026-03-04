@@ -11,6 +11,7 @@ export interface IPayment extends Document {
   monthlyServiceId: string | null;
   maintenanceRequestId: string | null;
   notes: string | null;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +27,12 @@ const PaymentSchema: Schema = new Schema(
     monthlyServiceId: { type: String, default: null },
     maintenanceRequestId: { type: String, default: null },
     notes: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,

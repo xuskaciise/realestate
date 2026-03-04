@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import Room from "@/lib/models/Room";
 import House from "@/lib/models/House";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
@@ -20,6 +22,14 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
 
     const room = await Room.findById(params.id).lean();
 
@@ -31,6 +41,24 @@ export async function GET(
     }
 
     const house = await House.findById(room.houseId).lean();
+    
+    if (!house) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only access rooms in their own houses
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!house.createdBy || !house.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
 
     return NextResponse.json({
       ...room,
@@ -60,6 +88,61 @@ export async function PUT(
     const validated = roomSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingRoom = await Room.findById(params.id).lean();
+    if (!existingRoom) {
+      return NextResponse.json(
+        { error: "Room not found" },
+        { status: 404 }
+      );
+    }
+
+    const existingHouse = await House.findById(existingRoom.houseId).lean();
+    if (!existingHouse) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only update rooms in their own houses
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingHouse.createdBy || !existingHouse.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Also check if the new houseId (if changed) belongs to the user
+    if (validated.houseId !== existingRoom.houseId) {
+      const newHouse = await House.findById(validated.houseId).lean();
+      if (!newHouse) {
+        return NextResponse.json(
+          { error: "House not found" },
+          { status: 404 }
+        );
+      }
+      if (currentUser.type !== "Admin") {
+        const userId = new mongoose.Types.ObjectId(currentUser.id);
+        if (!newHouse.createdBy || !newHouse.createdBy.equals(userId)) {
+          return NextResponse.json(
+            { error: "Access denied" },
+            { status: 403 }
+          );
+        }
+      }
+    }
 
     const room = await Room.findByIdAndUpdate(
       params.id,
@@ -114,6 +197,41 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingRoom = await Room.findById(params.id).lean();
+    if (!existingRoom) {
+      return NextResponse.json(
+        { error: "Room not found" },
+        { status: 404 }
+      );
+    }
+
+    const house = await House.findById(existingRoom.houseId).lean();
+    if (!house) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete rooms in their own houses
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!house.createdBy || !house.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
 
     const room = await Room.findByIdAndDelete(params.id);
 

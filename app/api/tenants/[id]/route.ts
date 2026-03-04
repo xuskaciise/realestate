@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongoose";
 import Tenant from "@/lib/models/Tenant";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const tenantSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -16,6 +18,15 @@ export async function GET(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
     const tenant = await Tenant.findById(params.id).lean();
 
     if (!tenant) {
@@ -23,6 +34,17 @@ export async function GET(
         { error: "Tenant not found" },
         { status: 404 }
       );
+    }
+
+    // Staff users can only access their own tenants
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!tenant.createdBy || !tenant.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json({
@@ -47,6 +69,33 @@ export async function PUT(
     const validated = tenantSchema.parse(body);
 
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingTenant = await Tenant.findById(params.id).lean();
+    if (!existingTenant) {
+      return NextResponse.json(
+        { error: "Tenant not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only update their own tenants
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingTenant.createdBy || !existingTenant.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
 
     const tenant = await Tenant.findByIdAndUpdate(
       params.id,
@@ -91,6 +140,34 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    const currentUser = getCurrentUserFromRequest(request);
+    
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const existingTenant = await Tenant.findById(params.id).lean();
+    if (!existingTenant) {
+      return NextResponse.json(
+        { error: "Tenant not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff users can only delete their own tenants
+    if (currentUser.type !== "Admin") {
+      const userId = new mongoose.Types.ObjectId(currentUser.id);
+      if (!existingTenant.createdBy || !existingTenant.createdBy.equals(userId)) {
+        return NextResponse.json(
+          { error: "Access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const tenant = await Tenant.findByIdAndDelete(params.id);
 
     if (!tenant) {

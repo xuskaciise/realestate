@@ -8,6 +8,7 @@ export interface IMaintenanceRequest extends Document {
   totalPrice: number;
   status: string; // Pending, In Progress, Completed, Cancelled
   notes?: string;
+  createdBy?: mongoose.Types.ObjectId; // User ID who created this request
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,12 @@ const MaintenanceRequestSchema: Schema = new Schema(
     totalPrice: { type: Number, required: true, min: 0 },
     status: { type: String, required: true, default: 'Pending' },
     notes: { type: String, default: null },
+    createdBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      default: null,
+      index: true,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,
