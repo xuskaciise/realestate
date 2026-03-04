@@ -38,20 +38,18 @@ export function setAuthSessionCookieInResponse(
 
 /**
  * Delete auth session cookie (for server components)
+ * Note: cookies().delete() only accepts the cookie name, not options
  */
 export async function deleteAuthSessionCookie() {
   const cookieStore = await cookies();
-  cookieStore.delete("auth-session", {
-    path: "/",
-  });
+  cookieStore.delete("auth-session");
 }
 
 /**
  * Delete auth session cookie in response (for middleware)
+ * Note: response.cookies.delete() only accepts the cookie name
  */
 export function deleteAuthSessionCookieInResponse(response: NextResponse) {
-  response.cookies.delete("auth-session", {
-    path: "/",
-  });
+  response.cookies.delete("auth-session");
   return response;
 }
