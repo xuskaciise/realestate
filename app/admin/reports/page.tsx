@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import dayjs from "dayjs";
 import { FileText, Download, Printer, FileSpreadsheet, Filter, X } from "lucide-react";
@@ -116,7 +117,7 @@ type Tenant = {
 };
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<"rent" | "payment" | "monthlyService" | "maintenance">("rent");
+  const [activeTab, setActiveTab] = useState<"rent" | "payment" | "monthlyService" | "maintenance" | "room">("rent");
   const [rents, setRents] = useState<Rent[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -154,10 +155,18 @@ export default function ReportsPage() {
     tenantId: "",
   });
 
+  const [roomFilters, setRoomFilters] = useState({
+    startDate: "",
+    endDate: "",
+  });
+
   const [showRentFilters, setShowRentFilters] = useState(false);
   const [showPaymentFilters, setShowPaymentFilters] = useState(false);
   const [showMonthlyServiceFilters, setShowMonthlyServiceFilters] = useState(false);
   const [showMaintenanceFilters, setShowMaintenanceFilters] = useState(false);
+  const [showRoomFilters, setShowRoomFilters] = useState(false);
+
+  const searchParams = useSearchParams();
 
   const fetchRents = useCallback(async () => {
     try {
@@ -250,6 +259,15 @@ export default function ReportsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (!tab) return;
+    const allowedTabs = new Set(["rent", "payment", "monthlyService", "maintenance", "room"]);
+    if (allowedTabs.has(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
 
   // Filter rents
   const filteredRents = rents.filter((rent) => {
@@ -345,6 +363,62 @@ export default function ReportsPage() {
     return true;
   });
 
+  const filteredRoomRents = rents.filter((rent) => {
+    const rentStart = dayjs(rent.startDate);
+    const rentEnd = dayjs(rent.endDate);
+    const from = roomFilters.startDate ? dayjs(roomFilters.startDate) : null;
+    const to = roomFilters.endDate ? dayjs(roomFilters.endDate) : null;
+
+    if (from && rentEnd.valueOf() < from.startOf("day").valueOf()) return false;
+    if (to && rentStart.valueOf() > to.endOf("day").valueOf()) return false;
+    return true;
+  });
+
+  const filteredRoomPayments = payments.filter((payment) => {
+    const paymentDate = dayjs(payment.paymentDate);
+    const from = roomFilters.startDate ? dayjs(roomFilters.startDate) : null;
+    const to = roomFilters.endDate ? dayjs(roomFilters.endDate) : null;
+
+    if (from && paymentDate.valueOf() < from.startOf("day").valueOf()) return false;
+    if (to && paymentDate.valueOf() > to.endOf("day").valueOf()) return false;
+    return true;
+  });
+
+  const resolvePaymentRoom = (payment: Payment): { room: Room | null; house: Room["house"] | null } => {
+    // Services / Maintenance payments have an explicit relation, so we can map directly.
+    if (payment.monthlyServiceId) {
+      const service = monthlyServices.find((s) => s.id === payment.monthlyServiceId);
+      const room = (service?.room as Room | null) || (service?.roomId ? rooms.find((r) => r.id === service.roomId) || null : null);
+      return {
+        room,
+        house: room?.house || null,
+      };
+    }
+
+    if (payment.maintenanceRequestId) {
+      const req = maintenanceRequests.find((r) => r.id === payment.maintenanceRequestId);
+      const room = req?.roomId ? rooms.find((r) => r.id === req.roomId) || null : null;
+      return {
+        room,
+        house: room?.house || null,
+      };
+    }
+
+    // Rent payments: infer room by matching tenantId + overlap date.
+    const paymentDateMs = dayjs(payment.paymentDate).valueOf();
+    const matchedRent = rents.find((r) => {
+      const startMs = dayjs(r.startDate).valueOf();
+      const endMs = dayjs(r.endDate).valueOf();
+      return r.tenantId === payment.tenantId && paymentDateMs >= startMs && paymentDateMs <= endMs;
+    });
+
+    const room = matchedRent?.roomId ? rooms.find((r) => r.id === matchedRent.roomId) || null : null;
+    return {
+      room,
+      house: room?.house || null,
+    };
+  };
+
   // Export to Excel
   const exportToExcel = () => {
     if (activeTab === "rent") {
@@ -404,6 +478,47 @@ export default function ReportsPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Monthly Services");
       XLSX.writeFile(wb, `Monthly_Services_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
+    } else if (activeTab === "room") {
+      const rentData = filteredRoomRents.map((rent) => {
+        const rentRoom = rooms.find((r) => r.id === rent.roomId);
+        const tenant = tenants.find((t) => t.id === rent.tenantId);
+        return {
+          "Room": rentRoom?.name || "N/A",
+          "House": rentRoom?.house?.name || "N/A",
+          "Tenant": tenant?.name || rent.tenant?.name || "N/A",
+          "Guarantor": rent.guarantorName,
+          "Monthly Rent": rent.monthlyRent,
+          "Months": rent.months,
+          "Total Rent": rent.totalRent,
+          "Start Date": dayjs(rent.startDate).format("YYYY-MM-DD"),
+          "End Date": dayjs(rent.endDate).format("YYYY-MM-DD"),
+          "Created": dayjs(rent.createdAt).format("YYYY-MM-DD"),
+        };
+      });
+
+      const paymentData = filteredRoomPayments.map((payment) => {
+        const resolved = resolvePaymentRoom(payment);
+        const resolvedRoom = resolved.room;
+        const tenant = payment.tenant?.name || tenants.find((t) => t.id === payment.tenantId)?.name;
+        return {
+          "Room": resolvedRoom?.name || "N/A",
+          "House": resolvedRoom?.house?.name || "N/A",
+          "Tenant": tenant || "N/A",
+          "Payment Type": getPaymentType(payment),
+          "Monthly Rent": payment.monthlyRent,
+          "Paid Amount": payment.paidAmount,
+          "Balance": payment.balance,
+          "Status": payment.status,
+          "Payment Date": dayjs(payment.paymentDate).format("YYYY-MM-DD"),
+          "Notes": payment.notes || "",
+          "Created": dayjs(payment.createdAt).format("YYYY-MM-DD"),
+        };
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rentData), "Rent Report");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentData), "Payment Report");
+      XLSX.writeFile(wb, `Room_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
     } else {
       const data = filteredMaintenanceRequests.map((request) => {
         const tenant = tenants.find((t) => t.id === request.tenantId);
@@ -1965,6 +2080,56 @@ export default function ReportsPage() {
         </Card>
       )}
 
+      {activeTab === "room" && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Room Report Filters</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowRoomFilters(!showRoomFilters)}
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                {showRoomFilters ? "Hide Filters" : "Show Filters"}
+              </Button>
+            </div>
+          </CardHeader>
+          {showRoomFilters && (
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>From Date</Label>
+                  <Input
+                    type="date"
+                    value={roomFilters.startDate}
+                    onChange={(e) => setRoomFilters({ ...roomFilters, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>To Date</Label>
+                  <Input
+                    type="date"
+                    value={roomFilters.endDate}
+                    onChange={(e) => setRoomFilters({ ...roomFilters, endDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 flex items-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => setRoomFilters({ startDate: "", endDate: "" })}
+                    className="w-full"
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {/* Rent Report Table */}
       {activeTab === "rent" && (
         <Card>
@@ -2141,6 +2306,153 @@ export default function ReportsPage() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "room" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Room Report</CardTitle>
+            <CardDescription>
+              Rents: {filteredRoomRents.length} | Payments: {filteredRoomPayments.length}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold">Rent Report</h2>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Room</TableHead>
+                        <TableHead>House</TableHead>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Monthly Rent</TableHead>
+                        <TableHead>Months</TableHead>
+                        <TableHead>Total Rent</TableHead>
+                        <TableHead>Start Date</TableHead>
+                        <TableHead>End Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRoomRents.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground">
+                            No rent records found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredRoomRents.map((rent) => {
+                          const rentRoom = rooms.find((r) => r.id === rent.roomId);
+                          const tenant = tenants.find((t) => t.id === rent.tenantId);
+                          return (
+                            <TableRow key={rent.id}>
+                              <TableCell>{rentRoom?.name || "N/A"}</TableCell>
+                              <TableCell>{rentRoom?.house?.name || "N/A"}</TableCell>
+                              <TableCell>{tenant?.name || rent.tenant?.name || "N/A"}</TableCell>
+                              <TableCell>${rent.monthlyRent.toLocaleString()}</TableCell>
+                              <TableCell>
+                                {rent.months} {rent.months === 1 ? "Month" : "Months"}
+                              </TableCell>
+                              <TableCell className="font-bold text-primary">
+                                ${rent.totalRent.toLocaleString()}
+                              </TableCell>
+                              <TableCell>{dayjs(rent.startDate).format("MMM DD, YYYY")}</TableCell>
+                              <TableCell>{dayjs(rent.endDate).format("MMM DD, YYYY")}</TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold">Payment Report</h2>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Room</TableHead>
+                        <TableHead>House</TableHead>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Monthly Rent</TableHead>
+                        <TableHead>Paid Amount</TableHead>
+                        <TableHead>Balance</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Payment Date</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRoomPayments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center text-muted-foreground">
+                            No payment records found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredRoomPayments.map((payment) => {
+                          const resolved = resolvePaymentRoom(payment);
+                          const tenantName =
+                            payment.tenant?.name || tenants.find((t) => t.id === payment.tenantId)?.name;
+                          return (
+                            <TableRow key={payment.id}>
+                              <TableCell>{resolved.room?.name || "N/A"}</TableCell>
+                              <TableCell>{resolved.house?.name || "N/A"}</TableCell>
+                              <TableCell>{tenantName || "N/A"}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    getPaymentType(payment) === "Rent"
+                                      ? "default"
+                                      : getPaymentType(payment) === "Services"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                >
+                                  {getPaymentType(payment)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>${payment.monthlyRent.toLocaleString()}</TableCell>
+                              <TableCell className="font-semibold text-green-600">
+                                ${payment.paidAmount.toLocaleString()}
+                              </TableCell>
+                              <TableCell className={`font-semibold ${payment.balance > 0 ? "text-red-600" : "text-green-600"}`}>
+                                ${payment.balance.toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    payment.status === "Paid"
+                                      ? "default"
+                                      : payment.status === "Partial"
+                                      ? "secondary"
+                                      : payment.status === "Overdue"
+                                      ? "destructive"
+                                      : "outline"
+                                  }
+                                >
+                                  {payment.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{dayjs(payment.paymentDate).format("MMM DD, YYYY")}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {payment.notes || "-"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

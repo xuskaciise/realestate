@@ -63,6 +63,11 @@ const allMenuItems = [
     icon: BarChart3,
   },
   {
+    title: "Room Report",
+    href: "/admin/room-report",
+    icon: Building2,
+  },
+  {
     title: "Users",
     href: "/admin/users",
     icon: UserCog,
