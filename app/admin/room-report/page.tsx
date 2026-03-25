@@ -83,6 +83,20 @@ type Room = {
 type MonthlyService = {
   id: string;
   roomId: string;
+  month: string;
+  waterPrevious: number | null;
+  waterCurrent: number | null;
+  waterPricePerUnit: number | null;
+  waterTotal: number | null;
+  electricityPrevious: number | null;
+  electricityCurrent: number | null;
+  electricityPricePerUnit: number | null;
+  electricityTotal: number | null;
+  trashFee: number | null;
+  maintenanceFee: number | null;
+  totalAmount: number;
+  notes: string | null;
+  createdAt: string;
   room?: Room | null;
 };
 
@@ -109,8 +123,9 @@ export default function RoomReportPage() {
 
   const [filters, setFilters] = useState({ startDate: "", endDate: "" });
   const [roomFilter, setRoomFilter] = useState({ roomId: "" });
+  const [tenantFilter, setTenantFilter] = useState({ tenantId: "" });
   const [showFilters, setShowFilters] = useState(true);
-  const [activeTab, setActiveTab] = useState<"rent" | "payment">("rent");
+  const [activeTab, setActiveTab] = useState<"rent" | "payment" | "monthlyService" | "maintenance">("rent");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -156,12 +171,13 @@ export default function RoomReportPage() {
       const from = filters.startDate ? dayjs(filters.startDate) : null;
       const to = filters.endDate ? dayjs(filters.endDate) : null;
 
+      if (tenantFilter.tenantId && rent.tenantId !== tenantFilter.tenantId) return false;
       if (roomFilter.roomId && rent.roomId !== roomFilter.roomId) return false;
       if (from && rentEnd.valueOf() < from.startOf("day").valueOf()) return false;
       if (to && rentStart.valueOf() > to.endOf("day").valueOf()) return false;
       return true;
     });
-  }, [filters.endDate, filters.startDate, rents, roomFilter.roomId]);
+  }, [filters.endDate, filters.startDate, rents, roomFilter.roomId, tenantFilter.tenantId]);
 
   const filteredRoomPayments = useMemo(() => {
     return payments.filter((payment) => {
@@ -169,6 +185,7 @@ export default function RoomReportPage() {
       const from = filters.startDate ? dayjs(filters.startDate) : null;
       const to = filters.endDate ? dayjs(filters.endDate) : null;
 
+      if (tenantFilter.tenantId && payment.tenantId !== tenantFilter.tenantId) return false;
       if (roomFilter.roomId) {
         let paymentRoomId: string | null = null;
 
@@ -200,9 +217,77 @@ export default function RoomReportPage() {
     filters.startDate,
     payments,
     roomFilter.roomId,
+    tenantFilter.tenantId,
     rents,
     monthlyServices,
     maintenanceRequests,
+  ]);
+
+  const inferTenantIdForMonthlyService = useCallback(
+    (service: MonthlyService): string | null => {
+      const monthStart = dayjs(service.month).startOf("month");
+      const monthEnd = dayjs(service.month).endOf("month");
+
+      const matchedRent = rents.find((r) => {
+        const startMs = dayjs(r.startDate).valueOf();
+        const endMs = dayjs(r.endDate).valueOf();
+        return r.roomId === service.roomId && startMs <= monthEnd.valueOf() && endMs >= monthStart.valueOf();
+      });
+
+      return matchedRent?.tenantId || null;
+    },
+    [rents]
+  );
+
+  const filteredMonthlyServices = useMemo(() => {
+    return monthlyServices.filter((service) => {
+      const monthStart = dayjs(service.month).startOf("month");
+      const monthEnd = dayjs(service.month).endOf("month");
+      const from = filters.startDate ? dayjs(filters.startDate) : null;
+      const to = filters.endDate ? dayjs(filters.endDate) : null;
+
+      if (from && monthEnd.valueOf() < from.startOf("day").valueOf()) return false;
+      if (to && monthStart.valueOf() > to.endOf("day").valueOf()) return false;
+      if (roomFilter.roomId && service.roomId !== roomFilter.roomId) return false;
+
+      if (tenantFilter.tenantId) {
+        const tenantId = inferTenantIdForMonthlyService(service);
+        if (!tenantId || tenantId !== tenantFilter.tenantId) return false;
+      }
+
+      return true;
+    });
+  }, [
+    filters.startDate,
+    filters.endDate,
+    monthlyServices,
+    roomFilter.roomId,
+    tenantFilter.tenantId,
+    inferTenantIdForMonthlyService,
+  ]);
+
+  const filteredMaintenanceRequests = useMemo(() => {
+    return maintenanceRequests.filter((request) => {
+      const createdAt = dayjs(request.createdAt);
+      const from = filters.startDate ? dayjs(filters.startDate) : null;
+      const to = filters.endDate ? dayjs(filters.endDate) : null;
+
+      if (from && createdAt.valueOf() < from.startOf("day").valueOf()) return false;
+      if (to && createdAt.valueOf() > to.endOf("day").valueOf()) return false;
+      if (roomFilter.roomId && request.roomId !== roomFilter.roomId) return false;
+
+      if (tenantFilter.tenantId) {
+        if (!request.tenantId || request.tenantId !== tenantFilter.tenantId) return false;
+      }
+
+      return true;
+    });
+  }, [
+    filters.endDate,
+    filters.startDate,
+    maintenanceRequests,
+    roomFilter.roomId,
+    tenantFilter.tenantId,
   ]);
 
   const getPaymentType = (payment: Payment): string => {
@@ -277,13 +362,69 @@ export default function RoomReportPage() {
     });
 
     const wb = XLSX.utils.book_new();
+
     if (activeTab === "rent") {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rentData), "Rent Report");
       XLSX.writeFile(wb, `Room_Rent_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
-    } else {
+      return;
+    }
+
+    if (activeTab === "payment") {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentData), "Payment Report");
       XLSX.writeFile(wb, `Room_Payment_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
+      return;
     }
+
+    if (activeTab === "monthlyService") {
+      const tenantNameForService = (service: MonthlyService): string => {
+        const monthStart = dayjs(service.month).startOf("month");
+        const monthEnd = dayjs(service.month).endOf("month");
+        const matchedRent = rents.find((r) => {
+          const startMs = dayjs(r.startDate).valueOf();
+          const endMs = dayjs(r.endDate).valueOf();
+          return r.roomId === service.roomId && startMs <= monthEnd.valueOf() && endMs >= monthStart.valueOf();
+        });
+        const tenantId = matchedRent?.tenantId || null;
+        return tenants.find((t) => t.id === tenantId)?.name || "N/A";
+      };
+
+      const monthlyData = filteredMonthlyServices.map((service) => ({
+        Month: dayjs(service.month).format("MMM YYYY"),
+        Room: service.room?.name || rooms.find((r) => r.id === service.roomId)?.name || "N/A",
+        House: service.room?.house?.name || rooms.find((r) => r.id === service.roomId)?.house?.name || "N/A",
+        Tenant: tenantNameForService(service),
+        "Water Total": service.waterTotal || 0,
+        "Electricity Total": service.electricityTotal || 0,
+        "Trash Fee": service.trashFee || 0,
+        "Maintenance Fee": service.maintenanceFee || 0,
+        "Total Amount": service.totalAmount,
+        Notes: service.notes || "",
+        Created: dayjs(service.createdAt).format("YYYY-MM-DD"),
+      }));
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthlyData), "Monthly Services Report");
+      XLSX.writeFile(wb, `Room_Monthly_Services_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
+      return;
+    }
+
+    // maintenance
+    const maintenanceData = filteredMaintenanceRequests.map((request) => {
+      const tenantName = request.tenantId ? tenants.find((t) => t.id === request.tenantId)?.name : null;
+      const room = request.roomId ? rooms.find((r) => r.id === request.roomId) : null;
+      return {
+        Created: dayjs(request.createdAt).format("YYYY-MM-DD"),
+        Status: request.status,
+        Tenant: tenantName || "N/A",
+        Room: room?.name || "N/A",
+        House: room?.house?.name || "N/A",
+        "Issues Count": request.issueIds?.length || 0,
+        "Total Price": request.totalPrice,
+        Notes: request.notes || "",
+      };
+    });
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(maintenanceData), "Maintenance Report");
+    XLSX.writeFile(wb, `Room_Maintenance_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
   };
 
   return (
@@ -297,13 +438,21 @@ export default function RoomReportPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Room Report</h1>
-          <p className="text-muted-foreground">Rent + Payments filtered by date range</p>
+          <p className="text-muted-foreground">Rent, payments, monthly services & maintenance</p>
         </div>
 
         <div className="flex gap-2">
           <Button onClick={exportToExcel} variant="outline">
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Export Excel ({activeTab === "rent" ? "Rent" : "Payment"})
+            Export Excel ({
+              activeTab === "rent"
+                ? "Rent"
+                : activeTab === "payment"
+                ? "Payment"
+                : activeTab === "monthlyService"
+                ? "Monthly Services"
+                : "Maintenance"
+            })
           </Button>
         </div>
       </div>
@@ -322,7 +471,9 @@ export default function RoomReportPage() {
             </Button>
           </div>
           {showFilters && (
-            <CardDescription>Use From/To date to filter rent & payment records</CardDescription>
+            <CardDescription>
+              Use From/To date to filter rent, payments, monthly services & maintenance
+            </CardDescription>
           )}
         </CardHeader>
         {showFilters && (
@@ -362,12 +513,29 @@ export default function RoomReportPage() {
                 </select>
               </div>
 
+              <div className="space-y-2">
+                <Label>Tenant</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={tenantFilter.tenantId}
+                  onChange={(e) => setTenantFilter({ tenantId: e.target.value })}
+                >
+                  <option value="">All Tenants</option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name} - {tenant.phone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2 flex items-end">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setFilters({ startDate: "", endDate: "" });
                     setRoomFilter({ roomId: "" });
+                    setTenantFilter({ tenantId: "" });
                   }}
                   className="w-full"
                 >
@@ -383,13 +551,20 @@ export default function RoomReportPage() {
       <Card>
         <CardHeader>
           <CardTitle>Room Report</CardTitle>
-          <CardDescription>Rent and Payment in 2 tabs</CardDescription>
+          <CardDescription>Rent, Payment, Monthly Services & Maintenance</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "rent" | "payment")}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) =>
+              setActiveTab(v as "rent" | "payment" | "monthlyService" | "maintenance")
+            }
+          >
             <TabsList className="mb-4">
               <TabsTrigger value="rent">Rent</TabsTrigger>
               <TabsTrigger value="payment">Payment</TabsTrigger>
+              <TabsTrigger value="monthlyService">Monthly Services</TabsTrigger>
+              <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
             </TabsList>
 
             <TabsContent value="rent">
@@ -525,6 +700,137 @@ export default function RoomReportPage() {
                             <TableCell>{dayjs(payment.paymentDate).format("MMM DD, YYYY")}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {payment.notes || "-"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="monthlyService">
+              <CardDescription className="mb-4">
+                Showing {filteredMonthlyServices.length} of {monthlyServices.length} records
+              </CardDescription>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Month</TableHead>
+                      <TableHead>Room</TableHead>
+                      <TableHead>House</TableHead>
+                      <TableHead>Tenant</TableHead>
+                      <TableHead>Water Total</TableHead>
+                      <TableHead>Electricity Total</TableHead>
+                      <TableHead>Trash Fee</TableHead>
+                      <TableHead>Maintenance Fee</TableHead>
+                      <TableHead>Total Amount</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMonthlyServices.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={11} className="text-center text-muted-foreground">
+                          No monthly service records found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredMonthlyServices.map((service) => {
+                        const tenantId = inferTenantIdForMonthlyService(service);
+                        const tenantName =
+                          tenantId ? tenants.find((t) => t.id === tenantId)?.name : null;
+                        return (
+                          <TableRow key={service.id}>
+                            <TableCell>{dayjs(service.month).format("MMM YYYY")}</TableCell>
+                            <TableCell>{service.room?.name || "N/A"}</TableCell>
+                            <TableCell>{service.room?.house?.name || "N/A"}</TableCell>
+                            <TableCell>{tenantName || "N/A"}</TableCell>
+                            <TableCell>${(service.waterTotal || 0).toLocaleString()}</TableCell>
+                            <TableCell>${(service.electricityTotal || 0).toLocaleString()}</TableCell>
+                            <TableCell>${(service.trashFee || 0).toLocaleString()}</TableCell>
+                            <TableCell>${(service.maintenanceFee || 0).toLocaleString()}</TableCell>
+                            <TableCell className="font-bold text-primary">
+                              ${service.totalAmount.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {service.notes || "-"}
+                            </TableCell>
+                            <TableCell>
+                              {dayjs(service.createdAt).isValid()
+                                ? dayjs(service.createdAt).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="maintenance">
+              <CardDescription className="mb-4">
+                Showing {filteredMaintenanceRequests.length} of {maintenanceRequests.length} records
+              </CardDescription>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tenant</TableHead>
+                      <TableHead>Room</TableHead>
+                      <TableHead>Issues Count</TableHead>
+                      <TableHead>Total Price</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMaintenanceRequests.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+                          No maintenance requests found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredMaintenanceRequests.map((request) => {
+                        const tenantName = request.tenantId
+                          ? tenants.find((t) => t.id === request.tenantId)?.name
+                          : null;
+                        const room = request.roomId
+                          ? rooms.find((r) => r.id === request.roomId)
+                          : null;
+                        const status = request.status || "";
+                        const badgeVariant =
+                          status === "Completed"
+                            ? "default"
+                            : status === "Cancelled"
+                            ? "destructive"
+                            : "secondary";
+
+                        return (
+                          <TableRow key={request.id}>
+                            <TableCell>
+                              {dayjs(request.createdAt).isValid()
+                                ? dayjs(request.createdAt).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={badgeVariant as any}>{status}</Badge>
+                            </TableCell>
+                            <TableCell>{tenantName || "N/A"}</TableCell>
+                            <TableCell>{room?.name || "N/A"}</TableCell>
+                            <TableCell>{request.issueIds?.length || 0}</TableCell>
+                            <TableCell className="font-bold text-primary">
+                              ${request.totalPrice.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {request.notes || "-"}
                             </TableCell>
                           </TableRow>
                         );
