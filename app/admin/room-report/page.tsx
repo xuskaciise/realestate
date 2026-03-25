@@ -108,6 +108,7 @@ export default function RoomReportPage() {
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
 
   const [filters, setFilters] = useState({ startDate: "", endDate: "" });
+  const [roomFilter, setRoomFilter] = useState({ roomId: "" });
   const [showFilters, setShowFilters] = useState(true);
   const [activeTab, setActiveTab] = useState<"rent" | "payment">("rent");
 
@@ -155,11 +156,12 @@ export default function RoomReportPage() {
       const from = filters.startDate ? dayjs(filters.startDate) : null;
       const to = filters.endDate ? dayjs(filters.endDate) : null;
 
+      if (roomFilter.roomId && rent.roomId !== roomFilter.roomId) return false;
       if (from && rentEnd.valueOf() < from.startOf("day").valueOf()) return false;
       if (to && rentStart.valueOf() > to.endOf("day").valueOf()) return false;
       return true;
     });
-  }, [filters.endDate, filters.startDate, rents]);
+  }, [filters.endDate, filters.startDate, rents, roomFilter.roomId]);
 
   const filteredRoomPayments = useMemo(() => {
     return payments.filter((payment) => {
@@ -167,11 +169,41 @@ export default function RoomReportPage() {
       const from = filters.startDate ? dayjs(filters.startDate) : null;
       const to = filters.endDate ? dayjs(filters.endDate) : null;
 
+      if (roomFilter.roomId) {
+        let paymentRoomId: string | null = null;
+
+        if (payment.monthlyServiceId) {
+          const service = monthlyServices.find((s) => s.id === payment.monthlyServiceId);
+          paymentRoomId = service?.roomId || null;
+        } else if (payment.maintenanceRequestId) {
+          const req = maintenanceRequests.find((r) => r.id === payment.maintenanceRequestId);
+          paymentRoomId = req?.roomId || null;
+        } else {
+          // Rent payments: infer room by tenantId + overlap date
+          const paymentDateMs = paymentDate.valueOf();
+          const matchedRent = rents.find((r) => {
+            const startMs = dayjs(r.startDate).valueOf();
+            const endMs = dayjs(r.endDate).valueOf();
+            return payment.tenantId === r.tenantId && paymentDateMs >= startMs && paymentDateMs <= endMs;
+          });
+          paymentRoomId = matchedRent?.roomId || null;
+        }
+
+        if (!paymentRoomId || paymentRoomId !== roomFilter.roomId) return false;
+      }
       if (from && paymentDate.valueOf() < from.startOf("day").valueOf()) return false;
       if (to && paymentDate.valueOf() > to.endOf("day").valueOf()) return false;
       return true;
     });
-  }, [filters.endDate, filters.startDate, payments]);
+  }, [
+    filters.endDate,
+    filters.startDate,
+    payments,
+    roomFilter.roomId,
+    rents,
+    monthlyServices,
+    maintenanceRequests,
+  ]);
 
   const getPaymentType = (payment: Payment): string => {
     if (payment.maintenanceRequestId) return "Maintenance";
@@ -295,7 +327,7 @@ export default function RoomReportPage() {
         </CardHeader>
         {showFilters && (
           <CardContent>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>From Date</Label>
                 <Input
@@ -314,10 +346,29 @@ export default function RoomReportPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label>Room</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={roomFilter.roomId}
+                  onChange={(e) => setRoomFilter({ roomId: e.target.value })}
+                >
+                  <option value="">All Rooms</option>
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name} - {room.house.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2 flex items-end">
                 <Button
                   variant="outline"
-                  onClick={() => setFilters({ startDate: "", endDate: "" })}
+                  onClick={() => {
+                    setFilters({ startDate: "", endDate: "" });
+                    setRoomFilter({ roomId: "" });
+                  }}
                   className="w-full"
                 >
                   <X className="mr-2 h-4 w-4" />
