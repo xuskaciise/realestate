@@ -1,5 +1,10 @@
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import {
+  AUTH_SESSION_COOKIE_NAME,
+  isSessionExpired,
+  parseSessionCookieValue,
+} from "@/lib/cookie-utils";
 
 export interface SessionUser {
   id: string;
@@ -13,22 +18,14 @@ export interface SessionUser {
 export async function getCurrentUser(): Promise<SessionUser | null> {
   try {
     const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("auth-session");
+    const sessionCookie = cookieStore.get(AUTH_SESSION_COOKIE_NAME);
 
     if (!sessionCookie || !sessionCookie.value) {
       return null;
     }
 
-    const cookieValue = sessionCookie.value.trim();
-    if (!cookieValue) {
-      return null;
-    }
-
-    const sessionData = JSON.parse(cookieValue);
-    
-    // Check if session has expired (24 hours = 86400000 ms)
-    const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
+    const sessionData = parseSessionCookieValue(sessionCookie.value);
+    if (!sessionData || isSessionExpired(sessionData)) {
       return null;
     }
 
@@ -42,22 +39,14 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
 export function getCurrentUserFromRequest(request: NextRequest): SessionUser | null {
   try {
-    const authCookie = request.cookies.get("auth-session");
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
 
     if (!authCookie || !authCookie.value) {
       return null;
     }
 
-    const cookieValue = authCookie.value.trim();
-    if (!cookieValue) {
-      return null;
-    }
-
-    const sessionData = JSON.parse(cookieValue);
-    
-    // Check if session has expired (24 hours = 86400000 ms)
-    const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    if (sessionData.timestamp && Date.now() - sessionData.timestamp > SESSION_TIMEOUT) {
+    const sessionData = parseSessionCookieValue(authCookie.value);
+    if (!sessionData || isSessionExpired(sessionData)) {
       return null;
     }
 

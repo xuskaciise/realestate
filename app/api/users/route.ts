@@ -11,7 +11,7 @@ const userSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   type: z.string().min(1, "User type is required"),
   status: z.string().min(1, "Status is required"),
-  profile: z.string().optional(),
+  profile: z.string().nullable().optional(),
 });
 
 export async function GET(request: NextRequest) {

@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getCookieOptions, setAuthSessionCookieInResponse, deleteAuthSessionCookieInResponse } from "@/lib/cookie-utils";
+import {
+  AUTH_SESSION_COOKIE_NAME,
+  deleteAuthSessionCookieInResponse,
+  isSessionExpired,
+  parseSessionCookieValue,
+  setAuthSessionCookieInResponse,
+} from "@/lib/cookie-utils";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if accessing admin routes
   if (pathname.startsWith("/admin")) {
-    const authCookie = request.cookies.get("auth-session");
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
 
     // If no auth cookie, redirect to login
     if (!authCookie || !authCookie.value) {
@@ -18,24 +24,15 @@ export function middleware(request: NextRequest) {
 
     // Verify cookie is valid JSON and not expired
     try {
-      const cookieValue = authCookie.value.trim();
-      if (!cookieValue) {
-        throw new Error("Empty cookie value");
-      }
-      const sessionData = JSON.parse(cookieValue);
-      
-      // Check if session has expired (24 hours = 86400000 ms)
-      const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-      const now = Date.now();
-      const sessionAge = sessionData.timestamp ? now - sessionData.timestamp : SESSION_TIMEOUT + 1;
-      
-      if (sessionData.timestamp && sessionAge > SESSION_TIMEOUT) {
+      const sessionData = parseSessionCookieValue(authCookie.value);
+      if (!sessionData || isSessionExpired(sessionData)) {
         // Session expired, redirect to login
         const loginUrl = new URL("/login", request.url);
         const response = NextResponse.redirect(loginUrl);
         return deleteAuthSessionCookieInResponse(response);
       }
-      
+
+      const now = Date.now();
       // Update session timestamp on each request (sliding expiration)
       // This extends the session as long as the user is active
       const updatedSessionData = {
@@ -56,16 +53,11 @@ export function middleware(request: NextRequest) {
 
   // If accessing login page and already authenticated, redirect to admin
   if (pathname === "/login") {
-    const authCookie = request.cookies.get("auth-session");
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
     if (authCookie && authCookie.value) {
-      try {
-        const cookieValue = authCookie.value.trim();
-        if (cookieValue) {
-          JSON.parse(cookieValue);
-          return NextResponse.redirect(new URL("/admin", request.url));
-        }
-      } catch {
-        // Invalid cookie, allow access to login
+      const sessionData = parseSessionCookieValue(authCookie.value);
+      if (sessionData && !isSessionExpired(sessionData)) {
+        return NextResponse.redirect(new URL("/admin", request.url));
       }
     }
   }

@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { setAuthSessionCookie, deleteAuthSessionCookie } from "@/lib/cookie-utils";
+import {
+  AUTH_SESSION_COOKIE_NAME,
+  deleteAuthSessionCookie,
+  isSessionExpired,
+  parseSessionCookieValue,
+  setAuthSessionCookie,
+} from "@/lib/cookie-utils";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("auth-session");
+    const sessionCookie = cookieStore.get(AUTH_SESSION_COOKIE_NAME);
 
     if (!sessionCookie || !sessionCookie.value) {
       return NextResponse.json(
@@ -16,22 +22,8 @@ export async function GET() {
       );
     }
 
-    const cookieValue = sessionCookie.value.trim();
-    if (!cookieValue) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
-
-    const sessionData = JSON.parse(cookieValue);
-    
-    // Check if session has expired (24 hours = 86400000 ms)
-    const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const now = Date.now();
-    const sessionAge = sessionData.timestamp ? now - sessionData.timestamp : SESSION_TIMEOUT + 1;
-    
-    if (sessionData.timestamp && sessionAge > SESSION_TIMEOUT) {
+    const sessionData = parseSessionCookieValue(sessionCookie.value);
+    if (!sessionData || isSessionExpired(sessionData)) {
       // Session expired - delete cookie and return error
       await deleteAuthSessionCookie();
       return NextResponse.json(
@@ -40,6 +32,7 @@ export async function GET() {
       );
     }
 
+    const now = Date.now();
     // Update session timestamp (sliding expiration)
     const updatedSessionData = {
       ...sessionData,

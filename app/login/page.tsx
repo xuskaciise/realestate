@@ -135,7 +135,7 @@ function LoginForm() {
           password: registerForm.password,
           type: "Staff",
           status: "Inactive",
-          profile: registerForm.profile || null,
+          profile: registerForm.profile || undefined,
         }),
       });
 

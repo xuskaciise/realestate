@@ -73,7 +73,40 @@ type MonthlyService = {
   id: string;
   roomId: string;
   month: string;
+  waterTotal?: number | null;
+  electricityTotal?: number | null;
+  trashFee?: number | null;
+  maintenanceFee?: number | null;
   totalAmount: number;
+  notes?: string | null;
+  createdAt?: string;
+  room?: {
+    id: string;
+    name: string;
+    house?: {
+      id: string;
+      name: string;
+      address?: string;
+    } | null;
+  } | null;
+};
+
+type MaintenanceIssue = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+type MaintenanceRequest = {
+  id: string;
+  tenantId?: string;
+  roomId?: string;
+  totalPrice: number;
+  status: string;
+  notes?: string | null;
+  issueIds: string[];
+  issues?: MaintenanceIssue[];
+  createdAt: string;
 };
 
 type Tenant = {
@@ -83,12 +116,13 @@ type Tenant = {
 };
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<"rent" | "payment">("rent");
+  const [activeTab, setActiveTab] = useState<"rent" | "payment" | "monthlyService" | "maintenance">("rent");
   const [rents, setRents] = useState<Rent[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [monthlyServices, setMonthlyServices] = useState<MonthlyService[]>([]);
+  const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Rent filters
@@ -108,9 +142,22 @@ export default function ReportsPage() {
     monthlyServiceId: "",
     paymentType: "", // "rent", "services", "maintenance", or "" for all
   });
+  const [monthlyServiceFilters, setMonthlyServiceFilters] = useState({
+    startMonth: "",
+    endMonth: "",
+    roomId: "",
+  });
+  const [maintenanceFilters, setMaintenanceFilters] = useState({
+    startDate: "",
+    endDate: "",
+    status: "",
+    tenantId: "",
+  });
 
   const [showRentFilters, setShowRentFilters] = useState(false);
   const [showPaymentFilters, setShowPaymentFilters] = useState(false);
+  const [showMonthlyServiceFilters, setShowMonthlyServiceFilters] = useState(false);
+  const [showMaintenanceFilters, setShowMaintenanceFilters] = useState(false);
 
   const fetchRents = useCallback(async () => {
     try {
@@ -172,14 +219,33 @@ export default function ReportsPage() {
     }
   }, []);
 
+  const fetchMaintenanceRequests = useCallback(async () => {
+    try {
+      const response = await fetch("/api/maintenance-requests");
+      if (response.ok) {
+        const data = await response.json();
+        setMaintenanceRequests(data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching maintenance requests:", error);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchRents(), fetchRooms(), fetchPayments(), fetchTenants(), fetchMonthlyServices()]);
+      await Promise.all([
+        fetchRents(),
+        fetchRooms(),
+        fetchPayments(),
+        fetchTenants(),
+        fetchMonthlyServices(),
+        fetchMaintenanceRequests(),
+      ]);
     } finally {
       setLoading(false);
     }
-  }, [fetchRents, fetchRooms, fetchPayments, fetchTenants, fetchMonthlyServices]);
+  }, [fetchRents, fetchRooms, fetchPayments, fetchTenants, fetchMonthlyServices, fetchMaintenanceRequests]);
 
   useEffect(() => {
     loadData();
@@ -250,6 +316,35 @@ export default function ReportsPage() {
     return true;
   });
 
+  const filteredMonthlyServices = monthlyServices.filter((service) => {
+    if (monthlyServiceFilters.startMonth && dayjs(service.month).isBefore(dayjs(monthlyServiceFilters.startMonth))) {
+      return false;
+    }
+    if (monthlyServiceFilters.endMonth && dayjs(service.month).isAfter(dayjs(monthlyServiceFilters.endMonth))) {
+      return false;
+    }
+    if (monthlyServiceFilters.roomId && service.roomId !== monthlyServiceFilters.roomId) {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredMaintenanceRequests = maintenanceRequests.filter((request) => {
+    if (maintenanceFilters.startDate && dayjs(request.createdAt).isBefore(dayjs(maintenanceFilters.startDate))) {
+      return false;
+    }
+    if (maintenanceFilters.endDate && dayjs(request.createdAt).isAfter(dayjs(maintenanceFilters.endDate))) {
+      return false;
+    }
+    if (maintenanceFilters.status && request.status !== maintenanceFilters.status) {
+      return false;
+    }
+    if (maintenanceFilters.tenantId && request.tenantId !== maintenanceFilters.tenantId) {
+      return false;
+    }
+    return true;
+  });
+
   // Export to Excel
   const exportToExcel = () => {
     if (activeTab === "rent") {
@@ -275,7 +370,7 @@ export default function ReportsPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Rent Report");
       XLSX.writeFile(wb, `Rent_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
-    } else {
+    } else if (activeTab === "payment") {
       const data = filteredPayments.map((payment) => ({
         "Tenant": payment.tenant?.name || "N/A",
         "Tenant Phone": payment.tenant?.phone || "N/A",
@@ -293,6 +388,42 @@ export default function ReportsPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Payment Report");
       XLSX.writeFile(wb, `Payment_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
+    } else if (activeTab === "monthlyService") {
+      const data = filteredMonthlyServices.map((service) => ({
+        "Month": dayjs(service.month).format("MMM YYYY"),
+        "Room": service.room?.name || rooms.find((r) => r.id === service.roomId)?.name || "N/A",
+        "House": service.room?.house?.name || rooms.find((r) => r.id === service.roomId)?.house.name || "N/A",
+        "Water Total": service.waterTotal || 0,
+        "Electricity Total": service.electricityTotal || 0,
+        "Trash Fee": service.trashFee || 0,
+        "Maintenance Fee": service.maintenanceFee || 0,
+        "Total Amount": service.totalAmount,
+        "Notes": service.notes || "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Monthly Services");
+      XLSX.writeFile(wb, `Monthly_Services_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
+    } else {
+      const data = filteredMaintenanceRequests.map((request) => {
+        const tenant = tenants.find((t) => t.id === request.tenantId);
+        const room = rooms.find((r) => r.id === request.roomId);
+        return {
+          "Created": dayjs(request.createdAt).format("YYYY-MM-DD"),
+          "Status": request.status,
+          "Tenant": tenant?.name || "N/A",
+          "Tenant Phone": tenant?.phone || "N/A",
+          "Room": room?.name || "N/A",
+          "House": room?.house.name || "N/A",
+          "Issues Count": request.issueIds?.length || 0,
+          "Total Price": request.totalPrice,
+          "Notes": request.notes || "",
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Maintenance");
+      XLSX.writeFile(wb, `Maintenance_Report_${dayjs().format("YYYY-MM-DD")}.xlsx`);
     }
   };
 
@@ -1393,6 +1524,23 @@ export default function ReportsPage() {
     });
   };
 
+  const clearMonthlyServiceFilters = () => {
+    setMonthlyServiceFilters({
+      startMonth: "",
+      endMonth: "",
+      roomId: "",
+    });
+  };
+
+  const clearMaintenanceFilters = () => {
+    setMaintenanceFilters({
+      startDate: "",
+      endDate: "",
+      status: "",
+      tenantId: "",
+    });
+  };
+
   // Get payment type label
   const getPaymentType = (payment: Payment): string => {
     if (payment.maintenanceRequestId) {
@@ -1422,14 +1570,18 @@ export default function ReportsPage() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Export Excel
           </Button>
-          <Button onClick={printAllInvoices} variant="outline">
-            <Printer className="mr-2 h-4 w-4" />
-            Print All Invoices
-          </Button>
-          <Button onClick={exportToPDF} variant="outline">
-            <FileText className="mr-2 h-4 w-4" />
-            Export PDF
-          </Button>
+          {(activeTab === "rent" || activeTab === "payment") && (
+            <>
+              <Button onClick={printAllInvoices} variant="outline">
+                <Printer className="mr-2 h-4 w-4" />
+                Print All Invoices
+              </Button>
+              <Button onClick={exportToPDF} variant="outline">
+                <FileText className="mr-2 h-4 w-4" />
+                Export PDF
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1454,6 +1606,26 @@ export default function ReportsPage() {
           }`}
         >
           Payment Report
+        </button>
+        <button
+          onClick={() => setActiveTab("monthlyService")}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === "monthlyService"
+              ? "border-b-2 border-primary text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Monthly Services Report
+        </button>
+        <button
+          onClick={() => setActiveTab("maintenance")}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === "maintenance"
+              ? "border-b-2 border-primary text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Maintenance Report
         </button>
       </div>
 
@@ -1643,6 +1815,156 @@ export default function ReportsPage() {
         </Card>
       )}
 
+      {activeTab === "monthlyService" && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Monthly Services Filters</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMonthlyServiceFilters(!showMonthlyServiceFilters)}
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                {showMonthlyServiceFilters ? "Hide Filters" : "Show Filters"}
+              </Button>
+            </div>
+          </CardHeader>
+          {showMonthlyServiceFilters && (
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Month</Label>
+                  <Input
+                    type="month"
+                    value={monthlyServiceFilters.startMonth}
+                    onChange={(e) =>
+                      setMonthlyServiceFilters({ ...monthlyServiceFilters, startMonth: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Month</Label>
+                  <Input
+                    type="month"
+                    value={monthlyServiceFilters.endMonth}
+                    onChange={(e) =>
+                      setMonthlyServiceFilters({ ...monthlyServiceFilters, endMonth: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Room</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={monthlyServiceFilters.roomId}
+                    onChange={(e) =>
+                      setMonthlyServiceFilters({ ...monthlyServiceFilters, roomId: e.target.value })
+                    }
+                  >
+                    <option value="">All Rooms</option>
+                    {rooms.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.name} - {room.house.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 flex items-end">
+                  <Button variant="outline" onClick={clearMonthlyServiceFilters} className="w-full">
+                    <X className="mr-2 h-4 w-4" />
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {activeTab === "maintenance" && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Maintenance Filters</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMaintenanceFilters(!showMaintenanceFilters)}
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                {showMaintenanceFilters ? "Hide Filters" : "Show Filters"}
+              </Button>
+            </div>
+          </CardHeader>
+          {showMaintenanceFilters && (
+            <CardContent>
+              <div className="grid grid-cols-5 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Date</Label>
+                  <Input
+                    type="date"
+                    value={maintenanceFilters.startDate}
+                    onChange={(e) =>
+                      setMaintenanceFilters({ ...maintenanceFilters, startDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Date</Label>
+                  <Input
+                    type="date"
+                    value={maintenanceFilters.endDate}
+                    onChange={(e) =>
+                      setMaintenanceFilters({ ...maintenanceFilters, endDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={maintenanceFilters.status}
+                    onChange={(e) =>
+                      setMaintenanceFilters({ ...maintenanceFilters, status: e.target.value })
+                    }
+                  >
+                    <option value="">All Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tenant</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={maintenanceFilters.tenantId}
+                    onChange={(e) =>
+                      setMaintenanceFilters({ ...maintenanceFilters, tenantId: e.target.value })
+                    }
+                  >
+                    <option value="">All Tenants</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 flex items-end">
+                  <Button variant="outline" onClick={clearMaintenanceFilters} className="w-full">
+                    <X className="mr-2 h-4 w-4" />
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {/* Rent Report Table */}
       {activeTab === "rent" && (
         <Card>
@@ -1816,6 +2138,119 @@ export default function ReportsPage() {
                         </TableCell>
                       </TableRow>
                     ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "monthlyService" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Services Report</CardTitle>
+            <CardDescription>
+              Showing {filteredMonthlyServices.length} of {monthlyServices.length} records
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Month</TableHead>
+                    <TableHead>Room</TableHead>
+                    <TableHead>House</TableHead>
+                    <TableHead>Water</TableHead>
+                    <TableHead>Electricity</TableHead>
+                    <TableHead>Trash</TableHead>
+                    <TableHead>Maintenance</TableHead>
+                    <TableHead>Total Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMonthlyServices.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground">
+                        No records found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredMonthlyServices.map((service) => {
+                      const room = service.room || rooms.find((r) => r.id === service.roomId);
+                      return (
+                        <TableRow key={service.id}>
+                          <TableCell>{dayjs(service.month).format("MMM YYYY")}</TableCell>
+                          <TableCell>{room?.name || "N/A"}</TableCell>
+                          <TableCell>{room?.house?.name || "N/A"}</TableCell>
+                          <TableCell>${(service.waterTotal || 0).toLocaleString()}</TableCell>
+                          <TableCell>${(service.electricityTotal || 0).toLocaleString()}</TableCell>
+                          <TableCell>${(service.trashFee || 0).toLocaleString()}</TableCell>
+                          <TableCell>${(service.maintenanceFee || 0).toLocaleString()}</TableCell>
+                          <TableCell className="font-bold text-primary">
+                            ${service.totalAmount.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "maintenance" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Maintenance Report</CardTitle>
+            <CardDescription>
+              Showing {filteredMaintenanceRequests.length} of {maintenanceRequests.length} records
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Room</TableHead>
+                    <TableHead>Issues</TableHead>
+                    <TableHead>Total Price</TableHead>
+                    <TableHead>Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMaintenanceRequests.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        No records found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredMaintenanceRequests.map((request) => {
+                      const tenant = tenants.find((t) => t.id === request.tenantId);
+                      const room = rooms.find((r) => r.id === request.roomId);
+                      return (
+                        <TableRow key={request.id}>
+                          <TableCell>{dayjs(request.createdAt).format("MMM DD, YYYY")}</TableCell>
+                          <TableCell>
+                            <Badge variant={request.status === "Completed" ? "default" : request.status === "Cancelled" ? "destructive" : "secondary"}>
+                              {request.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{tenant?.name || "N/A"}</TableCell>
+                          <TableCell>{room?.name || "N/A"}</TableCell>
+                          <TableCell>{request.issueIds?.length || 0}</TableCell>
+                          <TableCell className="font-bold text-primary">${request.totalPrice.toLocaleString()}</TableCell>
+                          <TableCell className="text-muted-foreground">{request.notes || "-"}</TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
