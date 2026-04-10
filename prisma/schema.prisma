@@ -6,51 +6,71 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  // Set DATABASE_URL in your .env.local to your Neon connection string.
+  // Example:
+  // DATABASE_URL="postgresql://neondb_owner:...@ep-ancient-river-amnz7z16-pooler.c-5.us-east-1.aws.neon.tech/realestate?sslmode=require&channel_binding=require"
+  url      = env("DATABASE_URL")
 }
 
 model House {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @db.Uuid
   name        String
   address     String
   description String?
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("HouseCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   rooms       Room[]
 }
 
 model Room {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @db.Uuid
   name        String
   monthlyRent Float
-  houseId     String
+  houseId     String   @db.Uuid
+
   status      String?  @default("available") // available, rented
   house       House    @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   rents       Rent[]
   monthlyServices MonthlyService[]
+
+  maintenanceRequests MaintenanceRequest[]
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @db.Uuid
   name      String
   phone     String
   address   String
   profile   String?
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("TenantCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   rents     Rent[]
   payments  Payment[]
+  maintenanceRequests MaintenanceRequest[]
 }
 
 model Rent {
-  id              String   @id @default(uuid())
-  roomId          String
+  id              String   @id @default(uuid()) @db.Uuid
+  roomId          String   @db.Uuid
   room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  tenantId        String
+  tenantId        String   @db.Uuid
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   guarantorName   String
   guarantorPhone  String
   monthlyRent     Float
@@ -59,29 +79,43 @@ model Rent {
   startDate       DateTime
   endDate         DateTime
   contract        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("RentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Payment {
-  id                String   @id @default(uuid())
-  tenantId          String
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
   tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   monthlyRent       Float
   paidAmount        Float
   balance           Float
   status            String   // Paid, Partial, Pending, Overdue
   paymentDate       DateTime
-  monthlyServiceId  String?  // Link to MonthlyService
+
+  monthlyServiceId  String? @db.Uuid
   monthlyService    MonthlyService? @relation(fields: [monthlyServiceId], references: [id], onDelete: SetNull)
+
+  maintenanceRequestId String? @db.Uuid
+  maintenanceRequest   MaintenanceRequest? @relation(fields: [maintenanceRequestId], references: [id], onDelete: SetNull)
+
   notes             String?
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("PaymentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
 
 model MonthlyService {
-  id                String   @id @default(uuid())
-  roomId            String
+  id                String   @id @default(uuid()) @db.Uuid
+  roomId            String   @db.Uuid
   room              Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   month             String   // Format: YYYY-MM
   // Water Meter
@@ -99,13 +133,20 @@ model MonthlyService {
   maintenanceFee    Float?
   totalAmount       Float
   notes             String?
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("MonthlyServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
   payments          Payment[]
+
+  @@unique([roomId, month])
 }
 
 model User {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @db.Uuid
   fullname  String
   username  String   @unique
   password  String
@@ -114,4 +155,47 @@ model User {
   profile   String?  // Profile image path
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Reverse relations for createdBy filters.
+  housesCreated            House[]              @relation("HouseCreatedBy")
+  tenantsCreated          Tenant[]            @relation("TenantCreatedBy")
+  rentsCreated            Rent[]              @relation("RentCreatedBy")
+  paymentsCreated         Payment[]           @relation("PaymentCreatedBy")
+  monthlyServicesCreated MonthlyService[]     @relation("MonthlyServiceCreatedBy")
+  maintenanceRequestsCreated MaintenanceRequest[] @relation("MaintenanceRequestCreatedBy")
+}
+
+model MaintenanceIssue {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  price       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  requests    MaintenanceRequest[]
+}
+
+model MaintenanceRequest {
+  id        String   @id @default(uuid()) @db.Uuid
+
+  tenantId  String?  @db.Uuid
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  roomId    String?  @db.Uuid
+  room      Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  issues    MaintenanceIssue[]
+
+  totalPrice Float
+  status     String   @default("Pending") // Pending, In Progress, Completed, Cancelled
+  notes      String?
+
+  createdBy   String? @db.Uuid
+  createdByUser User?  @relation("MaintenanceRequestCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  payments    Payment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import User from "@/lib/models/User";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 
 const userSchema = z.object({
   fullname: z.string().min(1, "Full name is required"),
@@ -16,7 +15,6 @@ const userSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     // Only Admin can see all users, Staff can only see themselves
@@ -27,17 +25,24 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    let query: any = {};
-    if (currentUser.type !== "Admin") {
-      // Staff users can only see themselves
-      query._id = currentUser.id;
-    }
-    
-    const users = await User.find(query)
-      .select("-password")
-      .sort({ createdAt: -1 })
-      .lean();
-    return NextResponse.json(users.map(u => ({ ...u, id: u._id.toString() })), {
+    const where = currentUser.type !== "Admin" ? { id: currentUser.id } : {};
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        fullname: true,
+        username: true,
+        type: true,
+        status: true,
+        profile: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json(users, {
       headers: {
         'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
       }
@@ -56,10 +61,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = userSchema.parse(body);
 
-    await connectDB();
-
     // Check if username already exists
-    const existingUser = await User.findOne({ username: validated.username });
+    const existingUser = await prisma.user.findFirst({
+      where: { username: validated.username },
+      select: { id: true },
+    });
 
     if (existingUser) {
       return NextResponse.json(
@@ -71,20 +77,28 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(validated.password, 10);
 
-    const user = new User({
-      fullname: validated.fullname,
-      username: validated.username,
-      password: hashedPassword,
-      type: validated.type,
-      status: validated.status,
-      profile: validated.profile || null,
+    const savedUser = await prisma.user.create({
+      data: {
+        fullname: validated.fullname,
+        username: validated.username,
+        password: hashedPassword,
+        type: validated.type,
+        status: validated.status,
+        profile: validated.profile ?? null,
+      },
+      select: {
+        id: true,
+        fullname: true,
+        username: true,
+        type: true,
+        status: true,
+        profile: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    const savedUser = await user.save();
-    const userJson = savedUser.toJSON();
-    const { password, ...userWithoutPassword } = userJson;
-
-    return NextResponse.json(userWithoutPassword, { status: 201 });
+    return NextResponse.json(savedUser, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

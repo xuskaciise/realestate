@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
-import MaintenanceIssue from "@/lib/models/MaintenanceIssue";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const updateRequestSchema = z.object({
   tenantId: z.string().optional(),
@@ -19,7 +16,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -29,7 +25,10 @@ export async function GET(
       );
     }
 
-    const maintenanceRequest = await MaintenanceRequest.findById(params.id).lean();
+    const maintenanceRequest = await prisma.maintenanceRequest.findUnique({
+      where: { id: params.id },
+      include: { issues: true },
+    });
 
     if (!maintenanceRequest) {
       return NextResponse.json(
@@ -40,8 +39,7 @@ export async function GET(
 
     // Staff users can only access their own requests
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!maintenanceRequest.createdBy || !maintenanceRequest.createdBy.equals(userId)) {
+      if (!maintenanceRequest.createdBy || maintenanceRequest.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -49,18 +47,9 @@ export async function GET(
       }
     }
 
-    // Populate issue details
-    const issues = await MaintenanceIssue.find({
-      _id: { $in: maintenanceRequest.issueIds }
-    }).lean();
-
     return NextResponse.json({
       ...maintenanceRequest,
-      id: maintenanceRequest._id.toString(),
-      issues: issues.map(i => ({
-        ...i,
-        id: i._id.toString(),
-      })),
+      issueIds: maintenanceRequest.issues.map((i) => i.id),
     });
   } catch (error) {
     console.error("Error fetching maintenance request:", error);
@@ -78,8 +67,6 @@ export async function PUT(
   try {
     const body = await request.json();
     const validated = updateRequestSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -89,7 +76,10 @@ export async function PUT(
       );
     }
 
-    const existingRequest = await MaintenanceRequest.findById(params.id).lean();
+    const existingRequest = await prisma.maintenanceRequest.findUnique({
+      where: { id: params.id },
+      include: { issues: true },
+    });
     if (!existingRequest) {
       return NextResponse.json(
         { error: "Maintenance request not found" },
@@ -99,8 +89,7 @@ export async function PUT(
 
     // Staff users can only update their own requests
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingRequest.createdBy || !existingRequest.createdBy.equals(userId)) {
+      if (!existingRequest.createdBy || existingRequest.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -108,46 +97,37 @@ export async function PUT(
       }
     }
 
-    const updateData: any = {};
-    if (validated.tenantId !== undefined) updateData.tenantId = validated.tenantId || null;
-    if (validated.roomId !== undefined) updateData.roomId = validated.roomId || null;
-    if (validated.status) updateData.status = validated.status;
-    if (validated.notes !== undefined) updateData.notes = validated.notes || null;
+    const data: any = {};
+    if (validated.tenantId !== undefined) data.tenantId = validated.tenantId ?? null;
+    if (validated.roomId !== undefined) data.roomId = validated.roomId ?? null;
+    if (validated.status !== undefined) data.status = validated.status;
+    if (validated.notes !== undefined) data.notes = validated.notes ?? null;
 
-    // If issueIds are updated, recalculate total price
     if (validated.issueIds) {
-      updateData.issueIds = validated.issueIds;
-      const issues = await MaintenanceIssue.find({
-        _id: { $in: validated.issueIds }
-      }).lean();
-      updateData.totalPrice = issues.reduce((sum, issue) => sum + (issue.price || 0), 0);
+      const issues = await prisma.maintenanceIssue.findMany({
+        where: { id: { in: validated.issueIds } },
+      });
+
+      if (issues.length !== validated.issueIds.length) {
+        return NextResponse.json(
+          { error: "One or more maintenance issues not found" },
+          { status: 404 }
+        );
+      }
+
+      data.issues = { set: issues.map((i) => ({ id: i.id })) };
+      data.totalPrice = issues.reduce((sum, issue) => sum + (issue.price || 0), 0);
     }
 
-    const updatedRequest = await MaintenanceRequest.findByIdAndUpdate(
-      params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updatedRequest) {
-      return NextResponse.json(
-        { error: "Maintenance request not found" },
-        { status: 404 }
-      );
-    }
-
-    // Populate issue details
-    const issues = await MaintenanceIssue.find({
-      _id: { $in: updatedRequest.issueIds }
-    }).lean();
+    const updatedRequest = await prisma.maintenanceRequest.update({
+      where: { id: params.id },
+      data,
+      include: { issues: true },
+    });
 
     return NextResponse.json({
       ...updatedRequest,
-      id: updatedRequest._id.toString(),
-      issues: issues.map(i => ({
-        ...i,
-        id: i._id.toString(),
-      })),
+      issueIds: updatedRequest.issues.map((i) => i.id),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -169,7 +149,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -179,7 +158,10 @@ export async function DELETE(
       );
     }
 
-    const existingRequest = await MaintenanceRequest.findById(params.id).lean();
+    const existingRequest = await prisma.maintenanceRequest.findUnique({
+      where: { id: params.id },
+      select: { id: true, createdBy: true },
+    });
     if (!existingRequest) {
       return NextResponse.json(
         { error: "Maintenance request not found" },
@@ -189,8 +171,7 @@ export async function DELETE(
 
     // Staff users can only delete their own requests
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingRequest.createdBy || !existingRequest.createdBy.equals(userId)) {
+      if (!existingRequest.createdBy || existingRequest.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -198,14 +179,7 @@ export async function DELETE(
       }
     }
 
-    const maintenanceRequest = await MaintenanceRequest.findByIdAndDelete(params.id);
-
-    if (!maintenanceRequest) {
-      return NextResponse.json(
-        { error: "Maintenance request not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.maintenanceRequest.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Maintenance request deleted successfully" });
   } catch (error) {

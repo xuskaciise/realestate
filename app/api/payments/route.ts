@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Payment from "@/lib/models/Payment";
-import Tenant from "@/lib/models/Tenant";
-import MonthlyService from "@/lib/models/MonthlyService";
-import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
@@ -22,34 +17,21 @@ const paymentSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
-    // Build query based on user type
-    let query: any = {};
-    if (currentUser && currentUser.type !== "Admin") {
-      // Staff users can only see their own payments
-      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
-    }
-    
-    const payments = await Payment.find(query).sort({ paymentDate: -1 }).lean();
+    const where =
+      currentUser && currentUser.type !== "Admin" ? { createdBy: currentUser.id } : {};
 
-    // Populate tenant for each payment
-    const paymentsWithTenant = await Promise.all(
-      payments.map(async (payment) => {
-        const tenant = await Tenant.findById(payment.tenantId).lean();
-        return {
-          ...payment,
-          id: payment._id.toString(),
-          tenant: tenant
-            ? {
-                ...tenant,
-                id: tenant._id.toString(),
-              }
-            : null,
-        };
-      })
-    );
+    const payments = await prisma.payment.findMany({
+      where,
+      orderBy: { paymentDate: "desc" },
+      include: { tenant: true },
+    });
+
+    const paymentsWithTenant = payments.map((payment) => ({
+      ...payment,
+      tenant: payment.tenant ?? null,
+    }));
 
     return NextResponse.json(paymentsWithTenant, {
       headers: {
@@ -70,37 +52,38 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = paymentSchema.parse(body);
 
-    await connectDB();
-
     // Calculate total due amount
     let totalDue = validated.monthlyRent;
     if (validated.maintenanceRequestId) {
-      const maintenanceRequest = await MaintenanceRequest.findById(validated.maintenanceRequestId).lean();
-      if (maintenanceRequest) {
-        totalDue = maintenanceRequest.totalPrice;
-      }
+      const maintenanceRequest = await prisma.maintenanceRequest.findUnique({
+        where: { id: validated.maintenanceRequestId },
+      });
+      if (maintenanceRequest) totalDue = maintenanceRequest.totalPrice;
     } else if (validated.monthlyServiceId) {
-      const service = await MonthlyService.findById(validated.monthlyServiceId).lean();
-      if (service) {
-        totalDue += service.totalAmount;
-      }
+      const service = await prisma.monthlyService.findUnique({
+        where: { id: validated.monthlyServiceId },
+      });
+      if (service) totalDue += service.totalAmount;
     }
 
     // Find all previous payments for this tenant (and same service/maintenance request if applicable)
-    const query: any = { tenantId: validated.tenantId };
+    const previousPaymentsWhere: any = { tenantId: validated.tenantId };
     if (validated.maintenanceRequestId) {
-      query.maintenanceRequestId = validated.maintenanceRequestId;
+      previousPaymentsWhere.maintenanceRequestId = validated.maintenanceRequestId;
     } else if (validated.monthlyServiceId) {
-      query.monthlyServiceId = validated.monthlyServiceId;
+      previousPaymentsWhere.monthlyServiceId = validated.monthlyServiceId;
     } else {
       // If no service, only count payments without service or with same monthlyRent
-      query.$or = [
+      previousPaymentsWhere.OR = [
         { monthlyServiceId: null, maintenanceRequestId: null },
-        { monthlyRent: validated.monthlyRent }
+        { monthlyRent: validated.monthlyRent },
       ];
     }
 
-    const previousPayments = await Payment.find(query).lean();
+    const previousPayments = await prisma.payment.findMany({
+      where: previousPaymentsWhere,
+      select: { paidAmount: true },
+    });
     
     // Calculate cumulative paid amount (excluding current payment)
     const previousPaidAmount = previousPayments.reduce(
@@ -132,42 +115,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
-
-    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
-
-    const payment = new Payment({
-      tenantId: validated.tenantId,
-      monthlyRent: validated.monthlyRent,
-      paidAmount: validated.paidAmount,
-      balance: newBalance,
-      status: status,
-      paymentDate: new Date(validated.paymentDate),
-      monthlyServiceId: validated.monthlyServiceId || null,
-      maintenanceRequestId: validated.maintenanceRequestId || null,
-      notes: validated.notes || null,
-      createdBy: createdByValue,
+    const savedPayment = await prisma.payment.create({
+      data: {
+        tenantId: validated.tenantId,
+        monthlyRent: validated.monthlyRent,
+        paidAmount: validated.paidAmount,
+        balance: newBalance,
+        status: status,
+        paymentDate: new Date(validated.paymentDate),
+        monthlyServiceId: validated.monthlyServiceId ?? null,
+        maintenanceRequestId: validated.maintenanceRequestId ?? null,
+        notes: validated.notes ?? null,
+        createdBy: currentUser.id,
+      },
+      include: { tenant: true },
     });
-
-    const savedPayment = await payment.save();
-
-    // Populate tenant for response
-    const tenant = await Tenant.findById(validated.tenantId).lean();
 
     return NextResponse.json(
       {
-        ...savedPayment.toJSON(),
-        tenant: tenant
-          ? {
-              ...tenant,
-              id: tenant._id.toString(),
-            }
-          : null,
+        ...savedPayment,
+        tenant: savedPayment.tenant ?? null,
       },
       { status: 201 }
     );

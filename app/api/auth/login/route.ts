@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import User from "@/lib/models/User";
 import bcrypt from "bcryptjs";
 import { setAuthSessionCookie } from "@/lib/cookie-utils";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = 'force-dynamic';
 
@@ -18,28 +17,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
     // Find user by username (case-insensitive, trim whitespace)
     const trimmedUsername = username.trim();
-    
-    // Try exact match first (faster)
-    let user = await User.findOne({ username: trimmedUsername }).lean();
-    
-    // If not found, try case-insensitive search using regex
-    if (!user) {
-      user = await User.findOne({ 
-        username: { $regex: `^${trimmedUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
-      }).lean();
-    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        username: {
+          equals: trimmedUsername,
+          mode: "insensitive",
+        },
+      },
+    });
 
     if (!user) {
       console.error(`[LOGIN] User not found: "${trimmedUsername}"`);
-      // Also try exact match for debugging
-      const exactUser = await User.findOne({ username: trimmedUsername }).lean();
-      if (exactUser) {
-        console.error(`[LOGIN] User exists with exact case: "${exactUser.username}"`);
-      }
       return NextResponse.json(
         { error: "Invalid username or password" },
         { status: 401 }
@@ -81,9 +72,8 @@ export async function POST(request: NextRequest) {
     console.log(`[LOGIN] Successful login for user: ${user.username}`);
 
     // Create session data (without password)
-    const { password: _, ...userWithoutPassword } = user;
     const sessionData = {
-      id: user._id.toString(),
+      id: user.id,
       username: user.username,
       fullname: user.fullname,
       type: user.type,
@@ -101,6 +91,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error during login:", error);
+
+    // Prisma connection errors often include code like P1001.
+    const errCode = (error as any)?.code;
+    if (errCode === "P1001") {
+      return NextResponse.json(
+        {
+          error:
+            "Database connection failed. Check your Neon `DATABASE_URL` in `.env.local`.",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to login. Please try again." },
       { status: 500 }

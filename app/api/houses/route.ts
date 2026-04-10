@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import House from "@/lib/models/House";
-import Room from "@/lib/models/Room";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const houseSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -14,36 +11,25 @@ const houseSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     console.log("Fetching houses - Current user:", currentUser ? { id: currentUser.id, type: currentUser.type } : "null");
     
     // Build query based on user type
-    let query: any = {};
-    if (currentUser && currentUser.type !== "Admin") {
-      // Staff users can only see their own houses
-      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
-    }
+    const where =
+      currentUser && currentUser.type !== "Admin" ? { createdBy: currentUser.id } : {};
 
-    const houses = await House.find(query).sort({ createdAt: -1 }).lean();
+    const houses = await prisma.house.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        rooms: {
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
 
-    // Populate rooms for each house
-    const housesWithRooms = await Promise.all(
-      houses.map(async (house) => {
-        const rooms = await Room.find({ houseId: house._id.toString() }).lean();
-        return {
-          ...house,
-          rooms: rooms.map((room) => ({
-            ...room,
-            id: room._id.toString(),
-          })),
-          id: house._id.toString(),
-        };
-      })
-    );
-
-    return NextResponse.json(housesWithRooms, {
+    return NextResponse.json(houses, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
@@ -63,8 +49,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = houseSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -83,33 +67,22 @@ export async function POST(request: NextRequest) {
     console.log("Creating house - User ID (raw):", currentUser.id);
     console.log("Creating house - User ID (trimmed):", String(currentUser.id).trim());
 
-    // Ensure user ID is valid
-    if (!currentUser.id || !mongoose.Types.ObjectId.isValid(currentUser.id)) {
-      console.error("ERROR: Invalid user ID:", currentUser.id);
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
+    const savedHouse = await prisma.house.create({
+      data: {
+        name: validated.name,
+        address: validated.address,
+        description: validated.description ?? null,
+        createdBy: currentUser.id,
+      },
+      include: {
+        rooms: true,
+      },
+    });
 
-    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
-
-    const houseData: any = {
-      name: validated.name,
-      address: validated.address,
-      description: validated.description || null,
-      createdBy: createdByValue,
-    };
-
-    // Use create() method which ensures all fields are saved
-    const savedHouse = await House.create(houseData);
-
-    const houseJson = savedHouse.toJSON();
     return NextResponse.json(
       {
-        ...houseJson,
-        id: savedHouse._id.toString(),
-        rooms: [],
+        ...savedHouse,
+        rooms: savedHouse.rooms ?? [],
       },
       { status: 201 }
     );

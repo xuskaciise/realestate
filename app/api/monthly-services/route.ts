@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import MonthlyService from "@/lib/models/MonthlyService";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const monthlyServiceSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -26,48 +22,19 @@ const monthlyServiceSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     // Build query based on user type
-    let query: any = {};
-    if (currentUser && currentUser.type !== "Admin") {
-      // Staff users can only see their own services
-      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
-    }
-    
-    const services = await MonthlyService.find(query).sort({ month: -1 }).lean();
+    const where =
+      currentUser && currentUser.type !== "Admin" ? { createdBy: currentUser.id } : {};
 
-    // Populate room and house for each service
-    const servicesWithRelations = await Promise.all(
-      services.map(async (service) => {
-        const room = await Room.findById(service.roomId).lean();
-        let house = null;
-        
-        if (room) {
-          house = await House.findById(room.houseId).lean();
-        }
+    const services = await prisma.monthlyService.findMany({
+      where,
+      orderBy: { month: "desc" },
+      include: { room: { include: { house: true } } },
+    });
 
-        return {
-          ...service,
-          id: service._id.toString(),
-          room: room
-            ? {
-                ...room,
-                id: room._id.toString(),
-                house: house
-                  ? {
-                      ...house,
-                      id: house._id.toString(),
-                    }
-                  : null,
-              }
-            : null,
-        };
-      })
-    );
-
-    return NextResponse.json(servicesWithRelations, {
+    return NextResponse.json(services, {
       headers: {
         'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30'
       }
@@ -85,22 +52,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = monthlyServiceSchema.parse(body);
-
-    await connectDB();
-
     // Check for duplicate service (same room and month)
-    const existingService = await MonthlyService.findOne({
-      roomId: validated.roomId,
-      month: validated.month,
-    }).lean();
+    const existingService = await prisma.monthlyService.findFirst({
+      where: { roomId: validated.roomId, month: validated.month },
+    });
 
     if (existingService) {
       return NextResponse.json(
-        { 
-          error: "Duplicate service", 
-          message: `A service already exists for this room in ${validated.month}. Please edit the existing service instead.` 
+        {
+          error: "Duplicate service",
+          message: `A service already exists for this room in ${validated.month}. Please edit the existing service instead.`,
         },
-        { status: 409 } // 409 Conflict
+        { status: 409 }
       );
     }
 
@@ -114,61 +77,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
-
-    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
-
-    const service = new MonthlyService({
-      roomId: validated.roomId,
-      month: validated.month,
-      waterPrevious: validated.waterPrevious ?? null,
-      waterCurrent: validated.waterCurrent ?? null,
-      waterPricePerUnit: validated.waterPricePerUnit ?? null,
-      waterTotal: validated.waterTotal ?? null,
-      electricityPrevious: validated.electricityPrevious ?? null,
-      electricityCurrent: validated.electricityCurrent ?? null,
-      electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
-      electricityTotal: validated.electricityTotal ?? null,
-      trashFee: validated.trashFee ?? null,
-      maintenanceFee: validated.maintenanceFee ?? null,
-      totalAmount: validated.totalAmount,
-      notes: validated.notes ?? null,
-      createdBy: createdByValue,
+    const savedService = await prisma.monthlyService.create({
+      data: {
+        roomId: validated.roomId,
+        month: validated.month,
+        waterPrevious: validated.waterPrevious ?? null,
+        waterCurrent: validated.waterCurrent ?? null,
+        waterPricePerUnit: validated.waterPricePerUnit ?? null,
+        waterTotal: validated.waterTotal ?? null,
+        electricityPrevious: validated.electricityPrevious ?? null,
+        electricityCurrent: validated.electricityCurrent ?? null,
+        electricityPricePerUnit: validated.electricityPricePerUnit ?? null,
+        electricityTotal: validated.electricityTotal ?? null,
+        trashFee: validated.trashFee ?? null,
+        maintenanceFee: validated.maintenanceFee ?? null,
+        totalAmount: validated.totalAmount,
+        notes: validated.notes ?? null,
+        createdBy: currentUser.id,
+      },
+      include: { room: { include: { house: true } } },
     });
 
-    const savedService = await service.save();
-
-    // Populate relations for response
-    const room = await Room.findById(validated.roomId).lean();
-    let house = null;
-    
-    if (room) {
-      house = await House.findById(room.houseId).lean();
-    }
-
-    return NextResponse.json(
-      {
-        ...savedService.toJSON(),
-        room: room
-          ? {
-              ...room,
-              id: room._id.toString(),
-              house: house
-                ? {
-                    ...house,
-                    id: house._id.toString(),
-                  }
-                : null,
-            }
-          : null,
-      },
-      { status: 201 }
-    );
+    return NextResponse.json(savedService, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

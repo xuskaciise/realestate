@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
 import { getCurrentUserFromRequest } from "@/lib/auth";
-import User from "@/lib/models/User";
-import House from "@/lib/models/House";
-import Room from "@/lib/models/Room";
-import Tenant from "@/lib/models/Tenant";
-import Rent from "@/lib/models/Rent";
-import Payment from "@/lib/models/Payment";
-import MonthlyService from "@/lib/models/MonthlyService";
-import MaintenanceRequest from "@/lib/models/MaintenanceRequest";
-import MaintenanceIssue from "@/lib/models/MaintenanceIssue";
 import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
 
     // Only Admin can clear data
@@ -36,7 +26,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify admin password
-    const adminUser = await User.findById(currentUser.id).lean();
+    const adminUser = await prisma.user.findUnique({
+      where: { id: currentUser.id },
+      select: { password: true },
+    });
     if (!adminUser) {
       return NextResponse.json(
         { error: "Admin user not found" },
@@ -62,15 +55,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Clear all data (except users)
-    await Promise.all([
-      MaintenanceRequest.deleteMany({}),
-      MaintenanceIssue.deleteMany({}),
-      Payment.deleteMany({}),
-      MonthlyService.deleteMany({}),
-      Rent.deleteMany({}),
-      Room.deleteMany({}),
-      House.deleteMany({}),
-      Tenant.deleteMany({}),
+    await prisma.$transaction([
+      prisma.maintenanceRequest.deleteMany(),
+      prisma.maintenanceIssue.deleteMany(),
+      prisma.payment.deleteMany(),
+      prisma.monthlyService.deleteMany(),
+      prisma.rent.deleteMany(),
+      prisma.room.deleteMany(),
+      prisma.house.deleteMany(),
+      prisma.tenant.deleteMany(),
     ]);
 
     return NextResponse.json(

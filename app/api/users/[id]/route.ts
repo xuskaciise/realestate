@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import User from "@/lib/models/User";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 
 const updateUserSchema = z.object({
   fullname: z.string().min(1, "Full name is required").optional(),
@@ -18,8 +17,19 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
-    const user = await User.findById(params.id).select("-password").lean();
+    const user = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        fullname: true,
+        username: true,
+        type: true,
+        status: true,
+        profile: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     if (!user) {
       return NextResponse.json(
@@ -28,10 +38,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      ...user,
-      id: user._id.toString(),
-    });
+    return NextResponse.json(user);
   } catch (error) {
     console.error("Error fetching user:", error);
     return NextResponse.json(
@@ -49,10 +56,11 @@ export async function PUT(
     const body = await request.json();
     const validated = updateUserSchema.parse(body);
 
-    await connectDB();
-
     // Check if user exists
-    const existingUser = await User.findById(params.id);
+    const existingUser = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: { id: true, username: true },
+    });
 
     if (!existingUser) {
       return NextResponse.json(
@@ -63,7 +71,10 @@ export async function PUT(
 
     // Check if username is being changed and if it already exists
     if (validated.username && validated.username !== existingUser.username) {
-      const usernameExists = await User.findOne({ username: validated.username });
+      const usernameExists = await prisma.user.findFirst({
+        where: { username: validated.username },
+        select: { id: true },
+      });
 
       if (usernameExists) {
         return NextResponse.json(
@@ -86,23 +97,22 @@ export async function PUT(
       updateData.password = await bcrypt.hash(validated.password, 10);
     }
 
-    const user = await User.findByIdAndUpdate(
-      params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).select("-password").lean();
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      ...user,
-      id: user._id.toString(),
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data: updateData,
+      select: {
+        id: true,
+        fullname: true,
+        username: true,
+        type: true,
+        status: true,
+        profile: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
+
+    return NextResponse.json(user);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -123,16 +133,14 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
-    const user = await User.findByIdAndDelete(params.id);
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+    try {
+      await prisma.user.delete({ where: { id: params.id } });
+    } catch (err: any) {
+      if (err?.code === "P2025") {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+      throw err;
     }
-
     return NextResponse.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);

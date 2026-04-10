@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import MaintenanceIssue from "@/lib/models/MaintenanceIssue";
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 
 const issueSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -11,9 +10,10 @@ const issueSchema = z.object({
 
 export async function GET() {
   try {
-    await connectDB();
-    const issues = await MaintenanceIssue.find({}).sort({ createdAt: -1 }).lean();
-    return NextResponse.json(issues.map(i => ({ ...i, id: i._id.toString() })), {
+    const issues = await prisma.maintenanceIssue.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(issues, {
       headers: {
         'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
       }
@@ -31,19 +31,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = issueSchema.parse(body);
-
-    await connectDB();
-
-    const issue = new MaintenanceIssue({
-      name: validated.name,
-      description: validated.description || null,
-      price: validated.price,
+    const savedIssue = await prisma.maintenanceIssue.create({
+      data: {
+        name: validated.name,
+        description: validated.description ?? null,
+        price: validated.price,
+      },
     });
-
-    const savedIssue = await issue.save();
-    const issueJson = savedIssue.toJSON();
-
-    return NextResponse.json(issueJson, { status: 201 });
+    return NextResponse.json(savedIssue, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const roomSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -15,49 +12,20 @@ const roomSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
-    
-    // Build query based on user type
-    let houseQuery: any = {};
-    if (currentUser && currentUser.type !== "Admin") {
-      // Staff users can only see rooms in their own houses
-      houseQuery.createdBy = new mongoose.Types.ObjectId(currentUser.id);
-    }
-    
-    // Get houses first, then filter rooms
-    const houses = await House.find(houseQuery).lean();
-    const houseIds = houses.map(h => h._id.toString());
-    
-    // If Staff user has no houses, return empty array
-    if (currentUser && currentUser.type !== "Admin" && houseIds.length === 0) {
-      return NextResponse.json([], {
-        headers: {
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
-        }
-      });
-    }
-    
-    const rooms = await Room.find(houseIds.length > 0 ? { houseId: { $in: houseIds } } : {}).sort({ createdAt: -1 }).lean();
 
-    // Populate house for each room
-    const roomsWithHouse = await Promise.all(
-      rooms.map(async (room) => {
-        const house = await House.findById(room.houseId).lean();
-        return {
-          ...room,
-          house: house
-            ? {
-                ...house,
-                id: house._id.toString(),
-              }
-            : null,
-          id: room._id.toString(),
-        };
-      })
-    );
+    const where =
+      currentUser && currentUser.type !== "Admin"
+        ? { house: { createdBy: currentUser.id } }
+        : {};
 
-    return NextResponse.json(roomsWithHouse, {
+    const rooms = await prisma.room.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { house: true },
+    });
+
+    return NextResponse.json(rooms, {
       headers: {
         'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
       }
@@ -75,8 +43,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = roomSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -87,7 +53,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify house exists
-    const house = await House.findById(validated.houseId).lean();
+    const house = await prisma.house.findUnique({
+      where: { id: validated.houseId },
+    });
     if (!house) {
       return NextResponse.json(
         { error: "House not found" },
@@ -97,8 +65,7 @@ export async function POST(request: NextRequest) {
 
     // Staff users can only create rooms in their own houses
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!house.createdBy || !house.createdBy.equals(userId)) {
+      if (!house.createdBy || house.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -106,25 +73,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const room = new Room({
-      name: validated.name,
-      monthlyRent: validated.monthlyRent,
-      houseId: validated.houseId,
-      status: validated.status || "available",
+    const savedRoom = await prisma.room.create({
+      data: {
+        name: validated.name,
+        monthlyRent: validated.monthlyRent,
+        houseId: validated.houseId,
+        status: validated.status ?? "available",
+      },
+      include: { house: true },
     });
 
-    const savedRoom = await room.save();
-
-    return NextResponse.json(
-      {
-        ...savedRoom.toJSON(),
-        house: {
-          ...house,
-          id: house._id.toString(),
-        },
-      },
-      { status: 201 }
-    );
+    return NextResponse.json(savedRoom, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Validation error:", error.errors);

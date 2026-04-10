@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Payment from "@/lib/models/Payment";
-import Tenant from "@/lib/models/Tenant";
-import MonthlyService from "@/lib/models/MonthlyService";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const paymentSchema = z.object({
   tenantId: z.string().min(1, "Tenant must be selected"),
@@ -23,7 +19,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -33,7 +28,10 @@ export async function GET(
       );
     }
 
-    const payment = await Payment.findById(params.id).lean();
+    const payment = await prisma.payment.findUnique({
+      where: { id: params.id },
+      include: { tenant: true },
+    });
 
     if (!payment) {
       return NextResponse.json(
@@ -44,8 +42,7 @@ export async function GET(
 
     // Staff users can only access their own payments
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!payment.createdBy || !payment.createdBy.equals(userId)) {
+      if (!payment.createdBy || payment.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -53,17 +50,9 @@ export async function GET(
       }
     }
 
-    const tenant = await Tenant.findById(payment.tenantId).lean();
-
     return NextResponse.json({
       ...payment,
-      id: payment._id.toString(),
-      tenant: tenant
-        ? {
-            ...tenant,
-            id: tenant._id.toString(),
-          }
-        : null,
+      tenant: payment.tenant ?? null,
     });
   } catch (error) {
     console.error("Error fetching payment:", error);
@@ -81,8 +70,6 @@ export async function PUT(
   try {
     const body = await request.json();
     const validated = paymentSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -93,7 +80,10 @@ export async function PUT(
     }
 
     // Get the existing payment to exclude it from previous payments calculation
-    const existingPayment = await Payment.findById(params.id).lean();
+    const existingPayment = await prisma.payment.findUnique({
+      where: { id: params.id },
+      select: { createdBy: true },
+    });
     if (!existingPayment) {
       return NextResponse.json(
         { error: "Payment not found" },
@@ -103,8 +93,7 @@ export async function PUT(
 
     // Staff users can only update their own payments
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingPayment.createdBy || !existingPayment.createdBy.equals(userId)) {
+      if (!existingPayment.createdBy || existingPayment.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -115,28 +104,25 @@ export async function PUT(
     // Calculate total due amount
     let totalDue = validated.monthlyRent;
     if (validated.monthlyServiceId) {
-      const service = await MonthlyService.findById(validated.monthlyServiceId).lean();
-      if (service) {
-        totalDue += service.totalAmount;
-      }
+      const service = await prisma.monthlyService.findUnique({
+        where: { id: validated.monthlyServiceId },
+      });
+      if (service) totalDue += service.totalAmount;
     }
 
     // Find all previous payments for this tenant (excluding the current payment being updated)
-    const query: any = { 
-      tenantId: validated.tenantId,
-      _id: { $ne: params.id } // Exclude current payment
-    };
+    const query: any = { tenantId: validated.tenantId, id: { not: params.id } };
     if (validated.monthlyServiceId) {
       query.monthlyServiceId = validated.monthlyServiceId;
     } else {
       // If no service, only count payments without service or with same monthlyRent
-      query.$or = [
-        { monthlyServiceId: null },
-        { monthlyRent: validated.monthlyRent }
-      ];
+      query.OR = [{ monthlyServiceId: null }, { monthlyRent: validated.monthlyRent }];
     }
 
-    const previousPayments = await Payment.find(query).lean();
+    const previousPayments = await prisma.payment.findMany({
+      where: query,
+      select: { paidAmount: true },
+    });
     
     // Calculate cumulative paid amount (excluding the payment being updated)
     const previousPaidAmount = previousPayments.reduce(
@@ -158,39 +144,24 @@ export async function PUT(
       status = "Pending";
     }
 
-    const payment = await Payment.findByIdAndUpdate(
-      params.id,
-      {
+    const payment = await prisma.payment.update({
+      where: { id: params.id },
+      data: {
         tenantId: validated.tenantId,
         monthlyRent: validated.monthlyRent,
         paidAmount: validated.paidAmount,
         balance: newBalance,
         status: status,
         paymentDate: new Date(validated.paymentDate),
-        monthlyServiceId: validated.monthlyServiceId || null,
-        notes: validated.notes || null,
+        monthlyServiceId: validated.monthlyServiceId ?? null,
+        notes: validated.notes ?? null,
       },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!payment) {
-      return NextResponse.json(
-        { error: "Payment not found" },
-        { status: 404 }
-      );
-    }
-
-    const tenant = await Tenant.findById(validated.tenantId).lean();
+      include: { tenant: true },
+    });
 
     return NextResponse.json({
       ...payment,
-      id: payment._id.toString(),
-      tenant: tenant
-        ? {
-            ...tenant,
-            id: tenant._id.toString(),
-          }
-        : null,
+      tenant: payment.tenant ?? null,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -212,7 +183,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -222,7 +192,10 @@ export async function DELETE(
       );
     }
 
-    const existingPayment = await Payment.findById(params.id).lean();
+    const existingPayment = await prisma.payment.findUnique({
+      where: { id: params.id },
+      select: { createdBy: true },
+    });
     if (!existingPayment) {
       return NextResponse.json(
         { error: "Payment not found" },
@@ -232,23 +205,14 @@ export async function DELETE(
 
     // Staff users can only delete their own payments
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingPayment.createdBy || !existingPayment.createdBy.equals(userId)) {
+      if (!existingPayment.createdBy || existingPayment.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
         );
       }
     }
-
-    const payment = await Payment.findByIdAndDelete(params.id);
-
-    if (!payment) {
-      return NextResponse.json(
-        { error: "Payment not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.payment.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Payment deleted successfully" });
   } catch (error) {

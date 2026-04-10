@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Rent from "@/lib/models/Rent";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
-import Tenant from "@/lib/models/Tenant";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const rentSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -26,7 +21,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -36,7 +30,9 @@ export async function GET(
       );
     }
 
-    const rent = await Rent.findById(params.id).lean();
+    const rent = await prisma.rent.findUnique({
+      where: { id: params.id },
+    });
 
     if (!rent) {
       return NextResponse.json(
@@ -47,8 +43,7 @@ export async function GET(
 
     // Staff users can only access their own rents
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!rent.createdBy || !rent.createdBy.equals(userId)) {
+      if (!rent.createdBy || rent.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -59,9 +54,9 @@ export async function GET(
     // Return normalized data
     return NextResponse.json({
       ...rent,
-      id: rent._id.toString(),
-      roomId: rent.roomId.toString(),
-      tenantId: rent.tenantId.toString(),
+      id: rent.id,
+      roomId: rent.roomId,
+      tenantId: rent.tenantId,
       startDate: rent.startDate ? rent.startDate.toISOString() : null,
       endDate: rent.endDate ? rent.endDate.toISOString() : null,
       createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
@@ -83,8 +78,6 @@ export async function PUT(
   try {
     const body = await request.json();
     const validated = rentSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -94,7 +87,9 @@ export async function PUT(
       );
     }
 
-    const existingRent = await Rent.findById(params.id).lean();
+    const existingRent = await prisma.rent.findUnique({
+      where: { id: params.id },
+    });
     if (!existingRent) {
       return NextResponse.json(
         { error: "Rent not found" },
@@ -104,8 +99,7 @@ export async function PUT(
 
     // Staff users can only update their own rents
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingRent.createdBy || !existingRent.createdBy.equals(userId)) {
+      if (!existingRent.createdBy || existingRent.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -117,10 +111,13 @@ export async function PUT(
     const newStartDate = new Date(validated.startDate);
     const newEndDate = new Date(validated.endDate);
 
-    const existingRents = await Rent.find({
-      roomId: validated.roomId,
-      _id: { $ne: params.id }, // Exclude the current rent being edited
-    }).lean();
+    const existingRents = await prisma.rent.findMany({
+      where: {
+        roomId: validated.roomId,
+        id: { not: params.id }, // Exclude the current rent being edited
+      },
+      select: { startDate: true, endDate: true },
+    });
 
     // Check for overlapping rent periods
     const hasOverlap = existingRents.some((existingRent) => {
@@ -139,9 +136,9 @@ export async function PUT(
       );
     }
 
-    const rent = await Rent.findByIdAndUpdate(
-      params.id,
-      {
+    const rent = await prisma.rent.update({
+      where: { id: params.id },
+      data: {
         roomId: validated.roomId,
         tenantId: validated.tenantId,
         guarantorName: validated.guarantorName,
@@ -151,24 +148,16 @@ export async function PUT(
         totalRent: validated.totalRent,
         startDate: newStartDate,
         endDate: newEndDate,
-        contract: validated.contract || null,
+        contract: validated.contract ?? null,
       },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!rent) {
-      return NextResponse.json(
-        { error: "Rent not found" },
-        { status: 404 }
-      );
-    }
+    });
 
     // Return normalized data
     return NextResponse.json({
       ...rent,
-      id: rent._id.toString(),
-      roomId: rent.roomId.toString(),
-      tenantId: rent.tenantId.toString(),
+      id: rent.id,
+      roomId: rent.roomId,
+      tenantId: rent.tenantId,
       startDate: rent.startDate ? rent.startDate.toISOString() : null,
       endDate: rent.endDate ? rent.endDate.toISOString() : null,
       createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
@@ -194,7 +183,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -204,7 +192,9 @@ export async function DELETE(
       );
     }
 
-    const existingRent = await Rent.findById(params.id).lean();
+    const existingRent = await prisma.rent.findUnique({
+      where: { id: params.id },
+    });
     if (!existingRent) {
       return NextResponse.json(
         { error: "Rent not found" },
@@ -214,8 +204,7 @@ export async function DELETE(
 
     // Staff users can only delete their own rents
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingRent.createdBy || !existingRent.createdBy.equals(userId)) {
+      if (!existingRent.createdBy || existingRent.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -223,14 +212,7 @@ export async function DELETE(
       }
     }
 
-    const rent = await Rent.findByIdAndDelete(params.id);
-
-    if (!rent) {
-      return NextResponse.json(
-        { error: "Rent not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.rent.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Rent deleted successfully" });
   } catch (error) {

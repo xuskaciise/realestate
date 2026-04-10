@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
@@ -21,7 +18,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -31,7 +27,10 @@ export async function GET(
       );
     }
 
-    const room = await Room.findById(params.id).lean();
+    const room = await prisma.room.findUnique({
+      where: { id: params.id },
+      include: { house: true },
+    });
 
     if (!room) {
       return NextResponse.json(
@@ -40,19 +39,9 @@ export async function GET(
       );
     }
 
-    const house = await House.findById(room.houseId).lean();
-    
-    if (!house) {
-      return NextResponse.json(
-        { error: "House not found" },
-        { status: 404 }
-      );
-    }
-
     // Staff users can only access rooms in their own houses
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!house.createdBy || !house.createdBy.equals(userId)) {
+      if (!room.house.createdBy || room.house.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -62,13 +51,7 @@ export async function GET(
 
     return NextResponse.json({
       ...room,
-      house: house
-        ? {
-            ...house,
-            id: house._id.toString(),
-          }
-        : null,
-      id: room._id.toString(),
+      house: room.house ?? null,
     });
   } catch (error) {
     console.error("Error fetching room:", error);
@@ -86,8 +69,6 @@ export async function PUT(
   try {
     const body = await request.json();
     const validated = roomSchema.parse(body);
-
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -97,7 +78,11 @@ export async function PUT(
       );
     }
 
-    const existingRoom = await Room.findById(params.id).lean();
+    const existingRoom = await prisma.room.findUnique({
+      where: { id: params.id },
+      include: { house: true },
+    });
+
     if (!existingRoom) {
       return NextResponse.json(
         { error: "Room not found" },
@@ -105,7 +90,7 @@ export async function PUT(
       );
     }
 
-    const existingHouse = await House.findById(existingRoom.houseId).lean();
+    const existingHouse = existingRoom.house;
     if (!existingHouse) {
       return NextResponse.json(
         { error: "House not found" },
@@ -115,8 +100,7 @@ export async function PUT(
 
     // Staff users can only update rooms in their own houses
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingHouse.createdBy || !existingHouse.createdBy.equals(userId)) {
+      if (!existingHouse.createdBy || existingHouse.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -126,16 +110,18 @@ export async function PUT(
 
     // Also check if the new houseId (if changed) belongs to the user
     if (validated.houseId !== existingRoom.houseId) {
-      const newHouse = await House.findById(validated.houseId).lean();
+      const newHouse = await prisma.house.findUnique({
+        where: { id: validated.houseId },
+      });
       if (!newHouse) {
         return NextResponse.json(
           { error: "House not found" },
           { status: 404 }
         );
       }
+
       if (currentUser.type !== "Admin") {
-        const userId = new mongoose.Types.ObjectId(currentUser.id);
-        if (!newHouse.createdBy || !newHouse.createdBy.equals(userId)) {
+        if (!newHouse.createdBy || newHouse.createdBy !== currentUser.id) {
           return NextResponse.json(
             { error: "Access denied" },
             { status: 403 }
@@ -144,36 +130,18 @@ export async function PUT(
       }
     }
 
-    const room = await Room.findByIdAndUpdate(
-      params.id,
-      {
+    const updatedRoom = await prisma.room.update({
+      where: { id: params.id },
+      data: {
         name: validated.name,
         monthlyRent: validated.monthlyRent,
         houseId: validated.houseId,
-        status: validated.status || "available",
+        status: validated.status ?? "available",
       },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!room) {
-      return NextResponse.json(
-        { error: "Room not found" },
-        { status: 404 }
-      );
-    }
-
-    const house = await House.findById(validated.houseId).lean();
-
-    return NextResponse.json({
-      ...room,
-      house: house
-        ? {
-            ...house,
-            id: house._id.toString(),
-          }
-        : null,
-      id: room._id.toString(),
+      include: { house: true },
     });
+
+    return NextResponse.json(updatedRoom);
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Validation error:", error.errors);
@@ -196,7 +164,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -206,7 +173,11 @@ export async function DELETE(
       );
     }
 
-    const existingRoom = await Room.findById(params.id).lean();
+    const existingRoom = await prisma.room.findUnique({
+      where: { id: params.id },
+      include: { house: true },
+    });
+
     if (!existingRoom) {
       return NextResponse.json(
         { error: "Room not found" },
@@ -214,18 +185,14 @@ export async function DELETE(
       );
     }
 
-    const house = await House.findById(existingRoom.houseId).lean();
+    const house = existingRoom.house;
     if (!house) {
-      return NextResponse.json(
-        { error: "House not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "House not found" }, { status: 404 });
     }
 
     // Staff users can only delete rooms in their own houses
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!house.createdBy || !house.createdBy.equals(userId)) {
+      if (!house.createdBy || house.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -233,14 +200,7 @@ export async function DELETE(
       }
     }
 
-    const room = await Room.findByIdAndDelete(params.id);
-
-    if (!room) {
-      return NextResponse.json(
-        { error: "Room not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.room.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Room deleted successfully" });
   } catch (error) {

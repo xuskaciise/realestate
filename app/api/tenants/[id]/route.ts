@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Tenant from "@/lib/models/Tenant";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const tenantSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -17,7 +15,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -27,7 +24,9 @@ export async function GET(
       );
     }
 
-    const tenant = await Tenant.findById(params.id).lean();
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: params.id },
+    });
 
     if (!tenant) {
       return NextResponse.json(
@@ -38,8 +37,7 @@ export async function GET(
 
     // Staff users can only access their own tenants
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!tenant.createdBy || !tenant.createdBy.equals(userId)) {
+      if (!tenant.createdBy || tenant.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -47,10 +45,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
-      ...tenant,
-      id: tenant._id.toString(),
-    });
+    return NextResponse.json(tenant);
   } catch (error) {
     console.error("Error fetching tenant:", error);
     return NextResponse.json(
@@ -68,7 +63,6 @@ export async function PUT(
     const body = await request.json();
     const validated = tenantSchema.parse(body);
 
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -78,7 +72,9 @@ export async function PUT(
       );
     }
 
-    const existingTenant = await Tenant.findById(params.id).lean();
+    const existingTenant = await prisma.tenant.findUnique({
+      where: { id: params.id },
+    });
     if (!existingTenant) {
       return NextResponse.json(
         { error: "Tenant not found" },
@@ -88,8 +84,7 @@ export async function PUT(
 
     // Staff users can only update their own tenants
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingTenant.createdBy || !existingTenant.createdBy.equals(userId)) {
+      if (!existingTenant.createdBy || existingTenant.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -97,28 +92,17 @@ export async function PUT(
       }
     }
 
-    const tenant = await Tenant.findByIdAndUpdate(
-      params.id,
-      {
+    const tenant = await prisma.tenant.update({
+      where: { id: params.id },
+      data: {
         name: validated.name,
         phone: validated.phone,
         address: validated.address,
-        profile: validated.profile || null,
+        profile: validated.profile ?? null,
       },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!tenant) {
-      return NextResponse.json(
-        { error: "Tenant not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      ...tenant,
-      id: tenant._id.toString(),
     });
+
+    return NextResponse.json(tenant);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -139,7 +123,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -149,7 +132,9 @@ export async function DELETE(
       );
     }
 
-    const existingTenant = await Tenant.findById(params.id).lean();
+    const existingTenant = await prisma.tenant.findUnique({
+      where: { id: params.id },
+    });
     if (!existingTenant) {
       return NextResponse.json(
         { error: "Tenant not found" },
@@ -159,8 +144,7 @@ export async function DELETE(
 
     // Staff users can only delete their own tenants
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingTenant.createdBy || !existingTenant.createdBy.equals(userId)) {
+      if (!existingTenant.createdBy || existingTenant.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -168,14 +152,7 @@ export async function DELETE(
       }
     }
 
-    const tenant = await Tenant.findByIdAndDelete(params.id);
-
-    if (!tenant) {
-      return NextResponse.json(
-        { error: "Tenant not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.tenant.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Tenant deleted successfully" });
   } catch (error) {

@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import MonthlyService from "@/lib/models/MonthlyService";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const monthlyServiceSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -29,7 +25,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -39,7 +34,10 @@ export async function GET(
       );
     }
 
-    const service = await MonthlyService.findById(params.id).lean();
+    const service = await prisma.monthlyService.findUnique({
+      where: { id: params.id },
+      include: { room: { include: { house: true } } },
+    });
 
     if (!service) {
       return NextResponse.json(
@@ -50,8 +48,7 @@ export async function GET(
 
     // Staff users can only access their own services
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!service.createdBy || !service.createdBy.equals(userId)) {
+      if (!service.createdBy || service.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -59,29 +56,7 @@ export async function GET(
       }
     }
 
-    const room = await Room.findById(service.roomId).lean();
-    let house = null;
-    
-    if (room) {
-      house = await House.findById(room.houseId).lean();
-    }
-
-    return NextResponse.json({
-      ...service,
-      id: service._id.toString(),
-      room: room
-        ? {
-            ...room,
-            id: room._id.toString(),
-            house: house
-              ? {
-                  ...house,
-                  id: house._id.toString(),
-                }
-              : null,
-          }
-        : null,
-    });
+    return NextResponse.json(service);
   } catch (error) {
     console.error("Error fetching monthly service:", error);
     return NextResponse.json(
@@ -99,7 +74,6 @@ export async function PUT(
     const body = await request.json();
     const validated = monthlyServiceSchema.parse(body);
 
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -109,7 +83,9 @@ export async function PUT(
       );
     }
 
-    const existingService = await MonthlyService.findById(params.id).lean();
+    const existingService = await prisma.monthlyService.findUnique({
+      where: { id: params.id },
+    });
     if (!existingService) {
       return NextResponse.json(
         { error: "Monthly service not found" },
@@ -119,8 +95,7 @@ export async function PUT(
 
     // Staff users can only update their own services
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingService.createdBy || !existingService.createdBy.equals(userId)) {
+      if (!existingService.createdBy || existingService.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -129,11 +104,13 @@ export async function PUT(
     }
 
     // Check for duplicate service (same room and month, excluding current service)
-    const duplicateService = await MonthlyService.findOne({
-      roomId: validated.roomId,
-      month: validated.month,
-      _id: { $ne: params.id }, // Exclude current service
-    }).lean();
+    const duplicateService = await prisma.monthlyService.findFirst({
+      where: {
+        roomId: validated.roomId,
+        month: validated.month,
+        id: { not: params.id },
+      },
+    });
 
     if (duplicateService) {
       return NextResponse.json(
@@ -145,9 +122,9 @@ export async function PUT(
       );
     }
 
-    const service = await MonthlyService.findByIdAndUpdate(
-      params.id,
-      {
+    const service = await prisma.monthlyService.update({
+      where: { id: params.id },
+      data: {
         roomId: validated.roomId,
         month: validated.month,
         waterPrevious: validated.waterPrevious ?? null,
@@ -163,39 +140,10 @@ export async function PUT(
         totalAmount: validated.totalAmount,
         notes: validated.notes ?? null,
       },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!service) {
-      return NextResponse.json(
-        { error: "Monthly service not found" },
-        { status: 404 }
-      );
-    }
-
-    const room = await Room.findById(validated.roomId).lean();
-    let house = null;
-    
-    if (room) {
-      house = await House.findById(room.houseId).lean();
-    }
-
-    return NextResponse.json({
-      ...service,
-      id: service._id.toString(),
-      room: room
-        ? {
-            ...room,
-            id: room._id.toString(),
-            house: house
-              ? {
-                  ...house,
-                  id: house._id.toString(),
-                }
-              : null,
-          }
-        : null,
+      include: { room: { include: { house: true } } },
     });
+
+    return NextResponse.json(service);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -216,7 +164,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
     
     if (!currentUser) {
@@ -226,7 +173,9 @@ export async function DELETE(
       );
     }
 
-    const existingService = await MonthlyService.findById(params.id).lean();
+    const existingService = await prisma.monthlyService.findUnique({
+      where: { id: params.id },
+    });
     if (!existingService) {
       return NextResponse.json(
         { error: "Monthly service not found" },
@@ -236,8 +185,7 @@ export async function DELETE(
 
     // Staff users can only delete their own services
     if (currentUser.type !== "Admin") {
-      const userId = new mongoose.Types.ObjectId(currentUser.id);
-      if (!existingService.createdBy || !existingService.createdBy.equals(userId)) {
+      if (!existingService.createdBy || existingService.createdBy !== currentUser.id) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }
@@ -245,14 +193,7 @@ export async function DELETE(
       }
     }
 
-    const service = await MonthlyService.findByIdAndDelete(params.id);
-
-    if (!service) {
-      return NextResponse.json(
-        { error: "Monthly service not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.monthlyService.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Monthly service deleted successfully" });
   } catch (error) {

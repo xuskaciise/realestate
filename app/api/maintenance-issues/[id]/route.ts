@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import MaintenanceIssue from "@/lib/models/MaintenanceIssue";
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 
 const updateIssueSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
@@ -14,8 +13,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
-    const issue = await MaintenanceIssue.findById(params.id).lean();
+    const issue = await prisma.maintenanceIssue.findUnique({
+      where: { id: params.id },
+    });
 
     if (!issue) {
       return NextResponse.json(
@@ -26,7 +26,6 @@ export async function GET(
 
     return NextResponse.json({
       ...issue,
-      id: issue._id.toString(),
     });
   } catch (error) {
     console.error("Error fetching maintenance issue:", error);
@@ -45,13 +44,10 @@ export async function PUT(
     const body = await request.json();
     const validated = updateIssueSchema.parse(body);
 
-    await connectDB();
-
-    const issue = await MaintenanceIssue.findByIdAndUpdate(
-      params.id,
-      validated,
-      { new: true, runValidators: true }
-    ).lean();
+    const issue = await prisma.maintenanceIssue.update({
+      where: { id: params.id },
+      data: validated,
+    });
 
     if (!issue) {
       return NextResponse.json(
@@ -62,7 +58,6 @@ export async function PUT(
 
     return NextResponse.json({
       ...issue,
-      id: issue._id.toString(),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -84,15 +79,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
-    const issue = await MaintenanceIssue.findByIdAndDelete(params.id);
-
-    if (!issue) {
-      return NextResponse.json(
-        { error: "Maintenance issue not found" },
-        { status: 404 }
-      );
-    }
+    await prisma.maintenanceIssue.delete({ where: { id: params.id } });
 
     return NextResponse.json({ message: "Maintenance issue deleted successfully" });
   } catch (error) {

@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongoose";
-import Rent from "@/lib/models/Rent";
-import Room from "@/lib/models/Room";
-import House from "@/lib/models/House";
-import Tenant from "@/lib/models/Tenant";
 import { getCurrentUserFromRequest } from "@/lib/auth";
 import { z } from "zod";
-import mongoose from "mongoose";
+import { prisma } from "@/lib/prisma";
 
 const rentSchema = z.object({
   roomId: z.string().min(1, "Room must be selected"),
@@ -23,24 +18,22 @@ const rentSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
     const currentUser = getCurrentUserFromRequest(request);
-    
-    // Build query based on user type
-    let query: any = {};
-    if (currentUser && currentUser.type !== "Admin") {
-      // Staff users can only see their own rents
-      query.createdBy = new mongoose.Types.ObjectId(currentUser.id);
-    }
-    
-    const rents = await Rent.find(query).sort({ createdAt: -1 }).lean();
+
+    const where =
+      currentUser && currentUser.type !== "Admin" ? { createdBy: currentUser.id } : {};
+
+    const rents = await prisma.rent.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+    });
 
     // Return normalized data (only IDs, no populated objects)
     const normalizedRents = rents.map((rent) => ({
       ...rent,
-      id: rent._id.toString(),
-      roomId: rent.roomId.toString(),
-      tenantId: rent.tenantId.toString(),
+      id: rent.id,
+      roomId: rent.roomId,
+      tenantId: rent.tenantId,
       startDate: rent.startDate ? rent.startDate.toISOString() : null,
       endDate: rent.endDate ? rent.endDate.toISOString() : null,
       createdAt: rent.createdAt ? rent.createdAt.toISOString() : new Date().toISOString(),
@@ -66,15 +59,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = rentSchema.parse(body);
 
-    await connectDB();
-
     // Check if room has an active rent that overlaps with the new rent period
     const newStartDate = new Date(validated.startDate);
     const newEndDate = new Date(validated.endDate);
 
-    const existingRents = await Rent.find({
-      roomId: validated.roomId,
-    }).lean();
+    const existingRents = await prisma.rent.findMany({
+      where: { roomId: validated.roomId },
+      select: { startDate: true, endDate: true },
+    });
 
     // Check for overlapping rent periods
     const hasOverlap = existingRents.some((existingRent) => {
@@ -103,38 +95,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!mongoose.Types.ObjectId.isValid(currentUser.id)) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 }
-      );
-    }
-
-    const createdByValue = new mongoose.Types.ObjectId(currentUser.id);
-
-    const rent = new Rent({
-      roomId: validated.roomId,
-      tenantId: validated.tenantId,
-      guarantorName: validated.guarantorName,
-      guarantorPhone: validated.guarantorPhone,
-      monthlyRent: validated.monthlyRent,
-      months: validated.months,
-      totalRent: validated.totalRent,
-      startDate: newStartDate,
-      endDate: newEndDate,
-      contract: validated.contract || null,
-      createdBy: createdByValue,
+    const savedRent = await prisma.rent.create({
+      data: {
+        roomId: validated.roomId,
+        tenantId: validated.tenantId,
+        guarantorName: validated.guarantorName,
+        guarantorPhone: validated.guarantorPhone,
+        monthlyRent: validated.monthlyRent,
+        months: validated.months,
+        totalRent: validated.totalRent,
+        startDate: newStartDate,
+        endDate: newEndDate,
+        contract: validated.contract ?? null,
+        createdBy: currentUser.id,
+      },
     });
-
-    const savedRent = await rent.save();
 
     // Return normalized data
     return NextResponse.json(
       {
-        ...savedRent.toJSON(),
-        id: savedRent._id.toString(),
-        roomId: savedRent.roomId.toString(),
-        tenantId: savedRent.tenantId.toString(),
+        ...savedRent,
+        id: savedRent.id,
+        roomId: savedRent.roomId,
+        tenantId: savedRent.tenantId,
         startDate: savedRent.startDate ? savedRent.startDate.toISOString() : null,
         endDate: savedRent.endDate ? savedRent.endDate.toISOString() : null,
         createdAt: savedRent.createdAt ? savedRent.createdAt.toISOString() : new Date().toISOString(),
