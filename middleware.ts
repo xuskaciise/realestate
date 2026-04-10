@@ -7,9 +7,17 @@ import {
   parseSessionCookieValue,
   setAuthSessionCookieInResponse,
 } from "@/lib/cookie-utils";
+import { rateLimitLogin } from "@/lib/rate-limit";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/api/auth/login" && !rateLimitLogin(request)) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Try again shortly." },
+      { status: 429 }
+    );
+  }
 
   // Check if accessing admin routes
   if (pathname.startsWith("/admin")) {
@@ -66,5 +74,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/login"],
+  matcher: ["/admin/:path*", "/login", "/api/auth/login"],
 };
