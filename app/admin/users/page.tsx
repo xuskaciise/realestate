@@ -22,11 +22,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { z } from "zod";
 import dayjs from "dayjs";
 import Image from "next/image";
-import { Users, Plus, Trash2, Edit, ChevronLeft, ChevronRight, Check, CheckSquare, Square } from "lucide-react";
+import { Users, Plus, Trash2, Edit, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { LoadingOverlay } from "@/components/ui/loading";
 import {
   DropdownMenu,
@@ -71,7 +71,7 @@ export default function UsersPage() {
   const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<{ type: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; type: string } | null>(null);
   const [openUserModal, setOpenUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -131,6 +131,25 @@ export default function UsersPage() {
       .catch(() => {});
   }, [loadData]);
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    setSelectedUsers((prev) =>
+      prev.includes(currentUser.id)
+        ? prev.filter((id) => id !== currentUser.id)
+        : prev
+    );
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (
+      editingUser &&
+      currentUser?.id === editingUser.id &&
+      userForm.status === "Inactive"
+    ) {
+      setUserForm((f) => ({ ...f, status: "Active" }));
+    }
+  }, [editingUser, currentUser?.id, userForm.status]);
+
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserErrors({});
@@ -153,7 +172,12 @@ export default function UsersPage() {
           });
 
           if (!response.ok) {
-            throw new Error("Failed to update user");
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(
+              typeof errBody?.error === "string"
+                ? errBody.error
+                : "Failed to update user"
+            );
           }
 
           // Refresh users from server to get latest data
@@ -180,7 +204,8 @@ export default function UsersPage() {
           addToast({
             type: "danger",
             title: "Update Error",
-            message: "Failed to update user. Please try again.",
+            message:
+              error instanceof Error ? error.message : "Failed to update user. Please try again.",
           });
         }
       } else {
@@ -341,6 +366,33 @@ export default function UsersPage() {
   const endIndex = startIndex + itemsPerPage;
   const paginatedUsers = users.slice(startIndex, endIndex);
 
+  const canSelectUsers = currentUser?.type === "Admin";
+  const selfId = currentUser?.id;
+  const selectableOnPage = useMemo(() => {
+    const page = users.slice(startIndex, endIndex);
+    if (!canSelectUsers) return [];
+    if (!selfId) return page;
+    return page.filter((u) => u.id !== selfId);
+  }, [canSelectUsers, selfId, users, startIndex, endIndex]);
+
+  const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = selectAllCheckboxRef.current;
+    if (!el || !canSelectUsers) {
+      return;
+    }
+    if (selectableOnPage.length === 0) {
+      el.indeterminate = false;
+      return;
+    }
+    const selectedSelectable = selectableOnPage.filter((u) =>
+      selectedUsers.includes(u.id)
+    ).length;
+    el.indeterminate =
+      selectedSelectable > 0 && selectedSelectable < selectableOnPage.length;
+  }, [canSelectUsers, selectableOnPage, selectedUsers]);
+
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
@@ -376,18 +428,25 @@ export default function UsersPage() {
   };
 
   const toggleUserSelection = (userId: string) => {
-    setSelectedUsers(prev =>
+    if (userId === selfId) return;
+    setSelectedUsers((prev) =>
       prev.includes(userId)
-        ? prev.filter(id => id !== userId)
+        ? prev.filter((id) => id !== userId)
         : [...prev, userId]
     );
   };
 
   const toggleSelectAll = () => {
-    if (selectedUsers.length === paginatedUsers.length) {
-      setSelectedUsers([]);
+    if (selectableOnPage.length === 0) return;
+    const allSelectableSelected = selectableOnPage.every((u) =>
+      selectedUsers.includes(u.id)
+    );
+    if (allSelectableSelected) {
+      setSelectedUsers((prev) =>
+        prev.filter((id) => !paginatedUsers.some((u) => u.id === id))
+      );
     } else {
-      setSelectedUsers(paginatedUsers.map(u => u.id));
+      setSelectedUsers(selectableOnPage.map((u) => u.id));
     }
   };
 
@@ -401,17 +460,37 @@ export default function UsersPage() {
       return;
     }
 
+    const selfId = currentUser?.id;
+    const targetIds =
+      status === "Inactive" && selfId
+        ? selectedUsers.filter((id) => id !== selfId)
+        : selectedUsers;
+
+    if (status === "Inactive" && selfId && selectedUsers.includes(selfId)) {
+      addToast({
+        type: "danger",
+        title: "Cannot deactivate your account",
+        message:
+          "Your own account cannot be set to inactive while you are logged in. It was skipped.",
+      });
+    }
+
+    if (targetIds.length === 0) {
+      await fetchUsers();
+      return;
+    }
+
     // Optimistically update the UI immediately
     setUsers(prevUsers =>
       prevUsers.map(user =>
-        selectedUsers.includes(user.id)
+        targetIds.includes(user.id)
           ? { ...user, status }
           : user
       )
     );
 
     try {
-      const updatePromises = selectedUsers.map(userId =>
+      const updatePromises = targetIds.map(userId =>
         fetch(`/api/users/${userId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -436,7 +515,7 @@ export default function UsersPage() {
       addToast({
         type: "success",
         title: "Status Updated",
-        message: `${selectedUsers.length} user(s) have been set to ${status}.`,
+        message: `${targetIds.length} user(s) have been set to ${status}.`,
       });
 
       setSelectedUsers([]);
@@ -510,19 +589,33 @@ export default function UsersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {currentUser?.type === "Admin" && (
+                    {currentUser && (
                       <TableHead className="w-12">
-                        <button
-                          type="button"
-                          onClick={toggleSelectAll}
-                          className="flex items-center justify-center"
-                        >
-                          {selectedUsers.length === paginatedUsers.length && paginatedUsers.length > 0 ? (
-                            <CheckSquare className="h-5 w-5 text-blue-600" />
+                        <div className="flex items-center justify-center">
+                          {canSelectUsers ? (
+                            <input
+                              ref={selectAllCheckboxRef}
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                              checked={
+                                selectableOnPage.length > 0 &&
+                                selectableOnPage.every((u) =>
+                                  selectedUsers.includes(u.id)
+                                )
+                              }
+                              disabled={selectableOnPage.length === 0}
+                              onChange={toggleSelectAll}
+                              aria-label="Select all users on this page (except your account)"
+                            />
                           ) : (
-                            <Square className="h-5 w-5 text-gray-400" />
+                            <input
+                              type="checkbox"
+                              disabled
+                              className="h-4 w-4 cursor-not-allowed opacity-50"
+                              aria-label="View only: selection disabled"
+                            />
                           )}
-                        </button>
+                        </div>
                       </TableHead>
                     )}
                     <TableHead>Profile</TableHead>
@@ -537,19 +630,35 @@ export default function UsersPage() {
                 <TableBody>
                   {paginatedUsers.map((user) => (
                     <TableRow key={user.id}>
-                      {currentUser?.type === "Admin" && (
-                        <TableCell>
-                          <button
-                            type="button"
-                            onClick={() => toggleUserSelection(user.id)}
-                            className="flex items-center justify-center"
-                          >
-                            {selectedUsers.includes(user.id) ? (
-                              <CheckSquare className="h-5 w-5 text-blue-600" />
+                      {currentUser && (
+                        <TableCell className="w-12">
+                          <div className="flex items-center justify-center">
+                            {canSelectUsers ? (
+                              user.id === selfId ? (
+                                <input
+                                  type="checkbox"
+                                  disabled
+                                  className="h-4 w-4 cursor-not-allowed opacity-50"
+                                  aria-label="Your account cannot be selected for bulk status changes"
+                                />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                  checked={selectedUsers.includes(user.id)}
+                                  onChange={() => toggleUserSelection(user.id)}
+                                  aria-label={`Select ${user.fullname || user.username}`}
+                                />
+                              )
                             ) : (
-                              <Square className="h-5 w-5 text-gray-400" />
+                              <input
+                                type="checkbox"
+                                disabled
+                                className="h-4 w-4 cursor-not-allowed opacity-50"
+                                aria-label="View only: selection disabled"
+                              />
                             )}
-                          </button>
+                          </div>
                         </TableCell>
                       )}
                       <TableCell>
@@ -820,7 +929,9 @@ export default function UsersPage() {
                     }}
                   >
                     <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
+                    {!(editingUser && currentUser?.id === editingUser.id) && (
+                      <option value="Inactive">Inactive</option>
+                    )}
                     <option value="Suspended">Suspended</option>
                   </select>
                   {userErrors.status && (

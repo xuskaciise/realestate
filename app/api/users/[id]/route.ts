@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUserFromRequest } from "@/lib/auth";
 
 const updateUserSchema = z.object({
   fullname: z.string().min(1, "Full name is required").optional(),
@@ -55,6 +56,22 @@ export async function PUT(
   try {
     const body = await request.json();
     const validated = updateUserSchema.parse(body);
+
+    const currentUser = getCurrentUserFromRequest(request);
+    if (
+      validated.status &&
+      validated.status.trim().toLowerCase() === "inactive" &&
+      currentUser &&
+      currentUser.id === params.id
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "You cannot set your own account to inactive while you are logged in.",
+        },
+        { status: 403 }
+      );
+    }
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
