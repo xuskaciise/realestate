@@ -7,17 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { Building2, Lock, User, Eye, EyeOff, Upload } from "lucide-react";
+import { Building2, Lock, User, UserCircle, UserPlus, Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/ui/file-upload";
 
 function LoginForm() {
@@ -25,6 +22,7 @@ function LoginForm() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [openRegisterModal, setOpenRegisterModal] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
@@ -150,6 +148,7 @@ function LoginForm() {
         setOpenRegisterModal(false);
         setRegisterForm({ fullname: "", username: "", password: "", profile: "" });
         setPreviewImage(null);
+        setShowRegisterPassword(false);
       } else {
         addToast({
           type: "danger",
@@ -343,141 +342,212 @@ function LoginForm() {
               <p>Secure login powered by Real Estate Management System</p>
             </div>
 
-            <div className="mt-4 text-center">
-              <Button
-                type="button"
-                variant="link"
-                onClick={() => setOpenRegisterModal(true)}
-                className="text-blue-600 hover:text-blue-700"
-              >
-                Register Now
-              </Button>
+            <div className="relative mt-8">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <span className="w-full border-t border-border/80" />
+              </div>
+              <div className="relative flex justify-center text-xs font-medium uppercase tracking-wider">
+                <span className="bg-card px-3 text-muted-foreground">New here?</span>
+              </div>
             </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpenRegisterModal(true)}
+              className="mt-5 h-11 w-full border-blue-200/80 bg-gradient-to-b from-blue-50/80 to-transparent text-sm font-semibold text-blue-700 shadow-sm transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 dark:border-blue-900/50 dark:from-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200"
+            >
+              <UserPlus className="mr-2 h-4 w-4 shrink-0" />
+              Register now
+            </Button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Staff signup — admin activates your account after review
+            </p>
           </CardContent>
           </Card>
         </div>
       </div>
 
       {/* Registration Modal */}
-      <Dialog open={openRegisterModal} onOpenChange={setOpenRegisterModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add User</DialogTitle>
-            <DialogDescription>Create a new user account</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleRegisterSubmit} className="space-y-4">
-            {/* Profile Image Upload */}
-            <div className="space-y-2">
-              <Label>Profile Image</Label>
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  {previewImage ? (
-                    <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-gray-200">
-                      <Image
-                        src={previewImage}
-                        alt="Profile preview"
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-20 w-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
-                      <User className="h-8 w-8 text-gray-400" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <FileUpload
-                    folder="users"
-                    onUploadComplete={handleUploadComplete}
-                    onUploadError={handleUploadError}
-                    currentFile={previewImage || undefined}
-                    maxSize={2}
-                    label="Choose Image"
-                  />
+      <Dialog
+        open={openRegisterModal}
+        onOpenChange={(open) => {
+          setOpenRegisterModal(open);
+          if (!open) {
+            setRegisterForm({ fullname: "", username: "", password: "", profile: "" });
+            setPreviewImage(null);
+            setRegisterErrors({});
+            setShowRegisterPassword(false);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[min(90vh,720px)] max-w-lg gap-0 overflow-hidden border-0 p-0 shadow-2xl sm:rounded-2xl">
+          <div className="max-h-[min(90vh,720px)] overflow-y-auto">
+            <div className="border-b border-border/60 bg-muted/25 px-6 pb-6 pt-8 text-center sm:text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg ring-4 ring-blue-600/10">
+                <UserPlus className="h-8 w-8 text-white" />
+              </div>
+              <DialogTitle className="text-2xl font-bold tracking-tight">
+                Create your account
+              </DialogTitle>
+              <DialogDescription className="pt-2 text-base text-muted-foreground">
+                Join as staff. You can sign in after an administrator activates your account.
+              </DialogDescription>
+            </div>
+
+            <form onSubmit={handleRegisterSubmit} className="space-y-5 px-6 py-6">
+              <div className="rounded-xl border border-border/80 bg-muted/20 p-4">
+                <Label className="text-sm font-medium">Profile photo</Label>
+                <p className="mb-3 text-xs text-muted-foreground">Optional — helps admins recognize you</p>
+                <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
+                  <div className="relative shrink-0">
+                    {previewImage ? (
+                      <div className="relative h-24 w-24 overflow-hidden rounded-full border-2 border-blue-200 shadow-md ring-2 ring-blue-600/10">
+                        <Image
+                          src={previewImage}
+                          alt="Profile preview"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/25 bg-background">
+                        <UserCircle className="h-10 w-10 text-muted-foreground/60" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="w-full min-w-0 flex-1">
+                    <FileUpload
+                      folder="users"
+                      onUploadComplete={handleUploadComplete}
+                      onUploadError={handleUploadError}
+                      currentFile={previewImage || undefined}
+                      maxSize={2}
+                      label="Upload photo"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="register-fullname">
-                Full Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="register-fullname"
-                value={registerForm.fullname}
-                onChange={(e) => {
-                  setRegisterForm({ ...registerForm, fullname: e.target.value });
-                  if (registerErrors.fullname) {
-                    setRegisterErrors({ ...registerErrors, fullname: "" });
-                  }
-                }}
-                className={registerErrors.fullname ? "border-destructive" : ""}
-              />
-              {registerErrors.fullname && (
-                <p className="text-sm text-destructive font-medium">{registerErrors.fullname}</p>
-              )}
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="register-fullname" className="text-sm font-medium">
+                  Full name <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <UserCircle className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="register-fullname"
+                    placeholder="Your full name"
+                    value={registerForm.fullname}
+                    onChange={(e) => {
+                      setRegisterForm({ ...registerForm, fullname: e.target.value });
+                      if (registerErrors.fullname) {
+                        setRegisterErrors({ ...registerErrors, fullname: "" });
+                      }
+                    }}
+                    disabled={registerLoading}
+                    className={`h-12 pl-10 ${registerErrors.fullname ? "border-destructive" : ""}`}
+                  />
+                </div>
+                {registerErrors.fullname ? (
+                  <p className="text-sm font-medium text-destructive">{registerErrors.fullname}</p>
+                ) : null}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="register-username">
-                Username <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="register-username"
-                value={registerForm.username}
-                onChange={(e) => {
-                  setRegisterForm({ ...registerForm, username: e.target.value });
-                  if (registerErrors.username) {
-                    setRegisterErrors({ ...registerErrors, username: "" });
-                  }
-                }}
-                className={registerErrors.username ? "border-destructive" : ""}
-              />
-              {registerErrors.username && (
-                <p className="text-sm text-destructive font-medium">{registerErrors.username}</p>
-              )}
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="register-username" className="text-sm font-medium">
+                  Username <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="register-username"
+                    placeholder="Choose a username"
+                    value={registerForm.username}
+                    onChange={(e) => {
+                      setRegisterForm({ ...registerForm, username: e.target.value });
+                      if (registerErrors.username) {
+                        setRegisterErrors({ ...registerErrors, username: "" });
+                      }
+                    }}
+                    disabled={registerLoading}
+                    className={`h-12 pl-10 ${registerErrors.username ? "border-destructive" : ""}`}
+                  />
+                </div>
+                {registerErrors.username ? (
+                  <p className="text-sm font-medium text-destructive">{registerErrors.username}</p>
+                ) : null}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="register-password">
-                Password <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="register-password"
-                type="password"
-                value={registerForm.password}
-                onChange={(e) => {
-                  setRegisterForm({ ...registerForm, password: e.target.value });
-                  if (registerErrors.password) {
-                    setRegisterErrors({ ...registerErrors, password: "" });
-                  }
-                }}
-                className={registerErrors.password ? "border-destructive" : ""}
-              />
-              {registerErrors.password && (
-                <p className="text-sm text-destructive font-medium">{registerErrors.password}</p>
-              )}
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="register-password" className="text-sm font-medium">
+                  Password <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="register-password"
+                    type={showRegisterPassword ? "text" : "password"}
+                    placeholder="At least 6 characters"
+                    value={registerForm.password}
+                    onChange={(e) => {
+                      setRegisterForm({ ...registerForm, password: e.target.value });
+                      if (registerErrors.password) {
+                        setRegisterErrors({ ...registerErrors, password: "" });
+                      }
+                    }}
+                    disabled={registerLoading}
+                    className={`h-12 pl-10 pr-10 ${registerErrors.password ? "border-destructive" : ""}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegisterPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={showRegisterPassword ? "Hide password" : "Show password"}
+                  >
+                    {showRegisterPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {registerErrors.password ? (
+                  <p className="text-sm font-medium text-destructive">{registerErrors.password}</p>
+                ) : null}
+              </div>
 
-            <DialogFooter className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setOpenRegisterModal(false);
-                  setRegisterForm({ fullname: "", username: "", password: "", profile: "" });
-                  setPreviewImage(null);
-                  setRegisterErrors({});
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={registerLoading}>
-                {registerLoading ? "Registering..." : "Register"}
-              </Button>
-            </DialogFooter>
-          </form>
+              <div className="space-y-3 pt-1">
+                <Button
+                  type="submit"
+                  disabled={registerLoading}
+                  className="h-12 w-full text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {registerLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Creating account…
+                    </span>
+                  ) : (
+                    "Create account"
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-10 w-full text-muted-foreground hover:text-foreground"
+                  onClick={() => setOpenRegisterModal(false)}
+                  disabled={registerLoading}
+                >
+                  Back to sign in
+                </Button>
+              </div>
+
+              <p className="text-center text-xs text-muted-foreground">
+                Secure registration — Real Estate Management System
+              </p>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
