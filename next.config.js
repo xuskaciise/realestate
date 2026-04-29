@@ -14,6 +14,12 @@ const nextConfig = {
         hostname: '*.supabase.co',
         pathname: '/storage/v1/object/public/**',
       },
+      {
+        protocol: 'http',
+        hostname: '187.124.191.23',
+        port: '9000',
+        pathname: '/**',
+      },
     ],
   },
   async headers() {

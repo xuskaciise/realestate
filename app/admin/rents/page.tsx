@@ -243,6 +243,7 @@ export default function RentsPage() {
   }, [rentForm.roomId, rentForm.monthlyRent, rooms]);
 
   const handleContractUploadComplete = (url: string) => {
+    // Store object key (private bucket). Use signed GET for viewing.
     setRentForm({ ...rentForm, contract: url });
   };
 
@@ -252,8 +253,25 @@ export default function RentsPage() {
   };
 
   const handleViewContract = (contract: string) => {
-    // Contract is now always a URL from UploadThing
-    window.open(contract, '_blank');
+    if (!contract) return;
+    if (contract.startsWith("http://") || contract.startsWith("https://")) {
+      window.open(contract, "_blank");
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetch("/api/uploads/sign-get", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: contract }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { signedUrl: string };
+        window.open(data.signedUrl, "_blank");
+      } catch {
+        // ignore
+      }
+    })();
   };
 
   const handleRentSubmit = async (e: React.FormEvent) => {

@@ -35,6 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getSignedGetUrl, isHttpUrl } from "@/lib/signed-uploads";
 
 const tenantSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -59,6 +60,7 @@ export default function TenantsPage() {
   const [openTenantModal, setOpenTenantModal] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [profileUrlByTenantId, setProfileUrlByTenantId] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -71,9 +73,22 @@ export default function TenantsPage() {
 
   const [tenantErrors, setTenantErrors] = useState<Record<string, string>>({});
 
-  const handleUploadComplete = (url: string) => {
-    setTenantForm({ ...tenantForm, profile: url });
-    setPreviewImage(url);
+  const resolveProfileToUrl = async (profile: string | null | undefined) => {
+    if (!profile) return null;
+    if (isHttpUrl(profile)) return profile;
+    try {
+      return await getSignedGetUrl(profile);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleUploadComplete = (key: string) => {
+    setTenantForm({ ...tenantForm, profile: key });
+    void (async () => {
+      const url = await resolveProfileToUrl(key);
+      setPreviewImage(url);
+    })();
   };
 
   const handleUploadError = (error: string) => {
@@ -93,8 +108,23 @@ export default function TenantsPage() {
         }
       });
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as Tenant[];
         setTenants(data || []);
+
+        const entries = await Promise.all(
+          (data || [])
+            .filter((t) => t.profile && !isHttpUrl(t.profile))
+            .map(async (t) => {
+              const url = await resolveProfileToUrl(t.profile);
+              return url ? ([t.id, url] as const) : null;
+            })
+        );
+        const nextMap: Record<string, string> = {};
+        for (const e of entries) {
+          if (!e) continue;
+          nextMap[e[0]] = e[1];
+        }
+        setProfileUrlByTenantId(nextMap);
       } else {
         setTenants([]);
       }
@@ -206,7 +236,10 @@ export default function TenantsPage() {
       address: tenant.address,
       profile: tenant.profile || "",
     });
-    setPreviewImage(tenant.profile || null);
+    void (async () => {
+      const url = await resolveProfileToUrl(tenant.profile);
+      setPreviewImage(url);
+    })();
     setOpenTenantModal(true);
   };
 
@@ -410,7 +443,11 @@ export default function TenantsPage() {
                     <TableCell>
                       <Avatar>
                         <AvatarImage 
-                          src={tenant.profile || undefined} 
+                          src={
+                            tenant.profile
+                              ? (isHttpUrl(tenant.profile) ? tenant.profile : profileUrlByTenantId[tenant.id])
+                              : undefined
+                          } 
                           alt={tenant.name} 
                         />
                         <AvatarFallback>

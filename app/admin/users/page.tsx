@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 import { FileUpload } from "@/components/ui/file-upload";
+import { getSignedGetUrl, isHttpUrl } from "@/lib/signed-uploads";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,6 +92,17 @@ export default function UsersPage() {
 
   const [userErrors, setUserErrors] = useState<Record<string, string>>({});
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [profileUrlByUserId, setProfileUrlByUserId] = useState<Record<string, string>>({});
+
+  const resolveProfileToUrl = useCallback(async (profile: string | null | undefined) => {
+    if (!profile) return null;
+    if (isHttpUrl(profile)) return profile;
+    try {
+      return await getSignedGetUrl(profile);
+    } catch {
+      return null;
+    }
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -101,13 +113,28 @@ export default function UsersPage() {
         },
       });
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as User[];
         setUsers(data);
+
+        const entries = await Promise.all(
+          (data || [])
+            .filter((u) => u.profile && !isHttpUrl(u.profile))
+            .map(async (u) => {
+              const url = await resolveProfileToUrl(u.profile);
+              return url ? ([u.id, url] as const) : null;
+            })
+        );
+        const nextMap: Record<string, string> = {};
+        for (const e of entries) {
+          if (!e) continue;
+          nextMap[e[0]] = e[1];
+        }
+        setProfileUrlByUserId(nextMap);
       }
     } catch (error) {
       console.error("Error fetching users:", error);
     }
-  }, []);
+  }, [resolveProfileToUrl]);
 
   const loadData = useCallback(async () => {
     try {
@@ -284,13 +311,20 @@ export default function UsersPage() {
       status: user.status,
       profile: user.profile || "",
     });
-    setPreviewImage(user.profile || null);
+    // Resolve to signed URL for preview when stored value is a key.
+    void (async () => {
+      const url = await resolveProfileToUrl(user.profile);
+      setPreviewImage(url);
+    })();
     setOpenUserModal(true);
   };
 
-  const handleUploadComplete = (url: string) => {
-    setUserForm({ ...userForm, profile: url });
-    setPreviewImage(url);
+  const handleUploadComplete = (key: string) => {
+    setUserForm({ ...userForm, profile: key });
+    void (async () => {
+      const url = await resolveProfileToUrl(key);
+      setPreviewImage(url);
+    })();
     addToast({
       type: "success",
       title: "Image Uploaded",
@@ -664,7 +698,11 @@ export default function UsersPage() {
                       <TableCell>
                         <Avatar>
                           <AvatarImage 
-                            src={user.profile || undefined} 
+                            src={
+                              user.profile
+                                ? (isHttpUrl(user.profile) ? user.profile : profileUrlByUserId[user.id])
+                                : undefined
+                            } 
                             alt={user.fullname || user.username} 
                           />
                           <AvatarFallback>

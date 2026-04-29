@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FileUpload } from "@/components/ui/file-upload";
+import { getSignedGetUrl, isHttpUrl } from "@/lib/signed-uploads";
 
 function LoginForm() {
   const router = useRouter();
@@ -170,9 +171,21 @@ function LoginForm() {
     }
   };
 
-  const handleUploadComplete = (url: string) => {
-    setRegisterForm({ ...registerForm, profile: url });
-    setPreviewImage(url);
+  const handleUploadComplete = (key: string) => {
+    setRegisterForm({ ...registerForm, profile: key });
+    void (async () => {
+      if (!key) return;
+      if (isHttpUrl(key)) {
+        setPreviewImage(key);
+        return;
+      }
+      try {
+        const signed = await getSignedGetUrl(key);
+        setPreviewImage(signed);
+      } catch {
+        setPreviewImage(null);
+      }
+    })();
     addToast({
       type: "success",
       title: "Image Uploaded",

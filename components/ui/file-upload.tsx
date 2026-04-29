@@ -4,10 +4,9 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useUploadThing } from "@/lib/uploadthing";
 
 interface FileUploadProps {
-  onUploadComplete: (url: string) => void;
+  onUploadComplete: (keyOrUrl: string) => void;
   onUploadError?: (error: string) => void;
   folder: "users" | "tenants" | "rents";
   accept?: string;
@@ -32,27 +31,7 @@ export function FileUpload({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Map folder to UploadThing endpoint
-  const endpoint = folder === "rents" ? "rentContract" : folder === "tenants" ? "tenantImage" : "userImage";
-
-  const { startUpload, isUploading } = useUploadThing(endpoint, {
-    onUploadProgress: (progress) => {
-      setUploadProgress(progress);
-    },
-    onClientUploadComplete: (res) => {
-      if (res && res.length > 0) {
-        onUploadComplete(res[0].url);
-      }
-      setUploadProgress(0);
-    },
-    onUploadError: (error) => {
-      onUploadError?.(error.message || "Upload failed");
-      setUploadProgress(0);
-    },
-  });
-
-  const uploading = isUploading;
+  const [uploading, setUploading] = useState(false);
 
   const handleFileSelect = async (file: File) => {
     // Validate file size
@@ -79,10 +58,54 @@ export function FileUpload({
     setUploadProgress(0);
 
     try {
-      await startUpload([file]);
+      setUploading(true);
+
+      const presignRes = await fetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder,
+          filename: file.name,
+          contentType: file.type,
+        }),
+      });
+
+      if (!presignRes.ok) {
+        const err = await presignRes.json().catch(() => null);
+        throw new Error(err?.error || "Failed to prepare upload");
+      }
+
+      const { uploadUrl, key } = (await presignRes.json()) as {
+        uploadUrl: string;
+        key: string;
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          const pct = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(pct);
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.send(file);
+      });
+
+      // Private buckets: store the object key. Use /api/uploads/sign-get for preview/view.
+      onUploadComplete(key);
     } catch (error) {
       console.error("Upload error:", error);
       onUploadError?.(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploading(false);
       setUploadProgress(0);
     }
   };
