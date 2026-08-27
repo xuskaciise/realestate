@@ -21,13 +21,7 @@ services:
       - internal
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
-        NEXT_PUBLIC_UPLOADTHING_APP_ID: ${NEXT_PUBLIC_UPLOADTHING_APP_ID:-}
+    image: ${APP_IMAGE:-ghcr.io/xuskaciise/realestate:latest}
     restart: unless-stopped
     env_file:
       - .env
