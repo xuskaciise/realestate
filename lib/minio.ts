@@ -6,10 +6,14 @@ function requiredEnv(name: string): string {
   return v;
 }
 
-function normalizeEndpoint(endpoint: string): { url: string; hostname: string } {
-  const withScheme = endpoint.startsWith("http://") || endpoint.startsWith("https://")
-    ? endpoint
-    : `http://${endpoint}`;
+function parseBool(v: string | undefined, def = false): boolean {
+  if (v === undefined || v === "") return def;
+  return ["1", "true", "yes", "on"].includes(v.trim().toLowerCase());
+}
+
+function normalizeEndpoint(endpoint: string, useSSL: boolean): { url: string; hostname: string } {
+  const hasScheme = endpoint.startsWith("http://") || endpoint.startsWith("https://");
+  const withScheme = hasScheme ? endpoint : `${useSSL ? "https" : "http"}://${endpoint}`;
   const u = new URL(withScheme);
   return { url: u.origin, hostname: u.hostname };
 }
@@ -34,10 +38,22 @@ function normalizePublicBaseUrl(raw: string, bucket: string): string {
 export function getMinioConfig() {
   const bucket = requiredEnv("MINIO_BUCKET");
   const endpointRaw = requiredEnv("MINIO_ENDPOINT");
-  const port = process.env.MINIO_PORT ? Number(process.env.MINIO_PORT) : 9000;
+  // If the endpoint already carries a scheme, respect it; otherwise use MINIO_USE_SSL (default false).
+  const useSSL =
+    endpointRaw.startsWith("https://") || parseBool(process.env.MINIO_USE_SSL, false);
+  const port = process.env.MINIO_PORT
+    ? Number(process.env.MINIO_PORT)
+    : useSSL
+    ? 443
+    : 9000;
 
-  const { url: endpointBase } = normalizeEndpoint(endpointRaw);
-  const endpoint = `${endpointBase.replace(/\/$/, "")}:${port}`;
+  const { url: endpointBase } = normalizeEndpoint(endpointRaw, useSSL);
+  const base = endpointBase.replace(/\/$/, "");
+  const proto = new URL(base).protocol; // "http:" | "https:"
+  // Don't append the default port for the scheme (avoids "https://host:443").
+  const isDefaultPort =
+    (proto === "https:" && port === 443) || (proto === "http:" && port === 80);
+  const endpoint = isDefaultPort ? base : `${base}:${port}`;
 
   const region = process.env.MINIO_REGION || "us-east-1";
   const accessKeyId = requiredEnv("MINIO_ACCESS_KEY");
