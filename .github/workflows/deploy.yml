@@ -37,6 +37,7 @@ jobs:
         with:
           context: .
           push: true
+          no-cache: true
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
@@ -75,12 +76,11 @@ jobs:
           /usr/local/bin/db-backup.sh || echo "backup warning"
 
           git fetch --all
-          git stash || true
+          git checkout -- docker-compose.yml 2>/dev/null || true
           git reset --hard origin/main
-          git stash pop || true
 
           docker pull ghcr.io/xuskaciise/realestate:latest
-          docker compose up -d --no-build app
+          docker compose up -d --no-build --force-recreate app
 
           sleep 15
           if ! curl -sf http://127.0.0.1:3000/ >/dev/null; then
