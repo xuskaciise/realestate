@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: realestate-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
@@ -22,6 +23,7 @@ services:
 
   app:
     image: ${APP_IMAGE:-ghcr.io/xuskaciise/realestate:latest}
+    container_name: realestate-app
     restart: unless-stopped
     env_file:
       - .env
@@ -36,8 +38,28 @@ services:
     networks:
       - internal
 
+  minio:
+    image: minio/minio
+    container_name: realestate-storage
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_BROWSER_REDIRECT_URL: https://s3.siulabs.so/minio/ui
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - internal
+
 volumes:
   postgres_data:
+    name: realestate_postgres_data
+  minio_data:
+    name: realestate_minio_data
 
 networks:
   internal:
